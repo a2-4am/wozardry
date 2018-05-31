@@ -2,7 +2,6 @@
 
 # (c) 2018 by 4am
 # MIT-licensed
-# portions from MIT-licensed defedd.py (c) 2014 by Paul Hagstrom
 
 import argparse
 import binascii

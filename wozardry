@@ -8,9 +8,10 @@ import binascii
 import bitarray # https://pypi.org/project/bitarray/
 import collections
 import itertools
+import os
 
-__version__ = "0.1"
-__date__ = "2018-05-31"
+__version__ = "0.2"
+__date__ = "2018-06-05"
 __progname__ = "wozardry"
 __displayname__ = __progname__ + " " + __version__ + " by 4am (" + __date__ + ")"
 
@@ -512,7 +513,8 @@ class CommandEdit(BaseCommand):
                                  help="""change information field.
 INFO format is "key:value".
 Acceptable keys are disk_type, write_protected, synchronized, cleaned, creator, version.
-Other keys are ignored.""")
+Other keys are ignored.
+For boolean fields, use "1" or "true" or "yes" for true, "0" or "false" or "no" for false.""")
         self.parser.add_argument("-m", "--meta", type=str, action="append",
                                  help="""change metadata field.
 META format is "key:value".
@@ -530,6 +532,8 @@ requires_machine, notes, side, side_name, contributor, image_date. Other keys ar
         # add all new info fields
         for i in args.info or ():
             k, v = i.split(":", 1)
+            if k in ("write_protected","synchronized","cleaned"):
+                v = v.lower() in ("1", "true", "yes")
             output.info[k] = v
         # add all new metadata fields
         for m in args.meta or ():

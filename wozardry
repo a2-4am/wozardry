@@ -82,7 +82,7 @@ class Track:
         self.bit_count = bit_count
         self.bit_index = 0
         self.revolutions = 0
-        
+
     def bit(self):
         b = self.bits[self.bit_index] and 1 or 0
         self.bit_index += 1
@@ -170,7 +170,7 @@ class WozValidator:
             metadata = metadata_as_bytes.decode("UTF-8")
         except:
             raise WozMETAFormatError("Metadata is not valid UTF-8")
-    
+
     def decode_metadata(self, metadata_as_bytes):
         self.validate_metadata(metadata_as_bytes)
         return metadata_as_bytes.decode("UTF-8")
@@ -179,7 +179,7 @@ class WozValidator:
         raise_if("\t" in value, WozMETAFormatError_BadValue, "Invalid metadata value (contains tab character)")
         raise_if("\n" in value, WozMETAFormatError_BadValue, "Invalid metadata value (contains linefeed character)")
         raise_if("|" in value, WozMETAFormatError_BadValue, "Invalid metadata value (contains pipe character)")
-                 
+
     def validate_metadata_language(self, language):
         raise_if(language and (language not in kLanguages), WozMETAFormatError_BadLanguage, "Invalid metadata language")
 
@@ -364,14 +364,14 @@ class WozWriter(WozValidator):
         chunk.extend(creator_raw) # creator
         chunk.extend(b"\x00" * 23) # reserved
         return chunk
-    
+
     def build_tmap(self):
         chunk = bytearray()
         chunk.extend(kTMAP) # chunk ID
         chunk.extend(to_uint32(160)) # chunk size
         chunk.extend(bytes(self.tmap))
         return chunk
-    
+
     def build_trks(self):
         chunk = bytearray()
         chunk.extend(kTRKS) # chunk ID
@@ -394,6 +394,8 @@ class WozWriter(WozValidator):
         for key, value_raw in self.meta.items():
             if type(value_raw) == str:
                 values = [value_raw]
+            else:
+                values = value_raw
             list(map(self.validate_metadata_value, values))
             if key == "language":
                 list(map(self.validate_metadata_language, values))
@@ -411,7 +413,7 @@ class WozWriter(WozValidator):
         chunk.extend(to_uint32(len(data))) # chunk size
         chunk.extend(data)
         return chunk
-        
+
     def build_head(self, crc):
         chunk = bytearray()
         chunk.extend(kWOZ1) # magic bytes
@@ -549,7 +551,7 @@ requires_machine, notes, side, side_name, contributor, image_date. Other keys ar
         with open(tmpfile, "wb") as f:
             output.write(f)
         os.rename(tmpfile, args.file)
-        
+
 if __name__ == "__main__":
     import sys
     raise_if = lambda cond, e, s="": cond and sys.exit("%s: %s" % (e.__name__, s))

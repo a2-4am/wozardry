@@ -10,8 +10,8 @@ import collections
 import itertools
 import os
 
-__version__ = "0.2"
-__date__ = "2018-06-05"
+__version__ = "0.3"
+__date__ = "2018-07-23"
 __progname__ = "wozardry"
 __displayname__ = __progname__ + " " + __version__ + " by 4am (" + __date__ + ")"
 

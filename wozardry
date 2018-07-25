@@ -10,8 +10,8 @@ import collections
 import itertools
 import os
 
-__version__ = "0.3"
-__date__ = "2018-07-23"
+__version__ = "dev"
+__date__ = "2018-07-25"
 __progname__ = "wozardry"
 __displayname__ = __progname__ + " " + __version__ + " by 4am (" + __date__ + ")"
 
@@ -391,11 +391,13 @@ class WozWriter(WozValidator):
 
     def build_meta(self):
         if not self.meta: return b""
+        meta_tmp = {}
         for key, value_raw in self.meta.items():
             if type(value_raw) == str:
                 values = [value_raw]
             else:
                 values = value_raw
+            meta_tmp[key] = values
             list(map(self.validate_metadata_value, values))
             if key == "language":
                 list(map(self.validate_metadata_language, values))
@@ -406,8 +408,8 @@ class WozWriter(WozValidator):
         data = b"\x0A".join(
             [k.encode("UTF-8") + \
              b"\x09" + \
-             (type(v) in (list,tuple) and "|".join(v) or v).encode("UTF-8") \
-             for k, v in self.meta.items()])
+             "|".join(v).encode("UTF-8") \
+             for k, v in meta_tmp.items()])
         chunk = bytearray()
         chunk.extend(kMETA) # chunk ID
         chunk.extend(to_uint32(len(data))) # chunk size

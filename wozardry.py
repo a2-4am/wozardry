@@ -7,11 +7,12 @@ import argparse
 import binascii
 import bitarray # https://pypi.org/project/bitarray/
 import collections
+import json
 import itertools
 import os
 
 __version__ = "dev"
-__date__ = "2018-07-25"
+__date__ = "2018-09-06"
 __progname__ = "wozardry"
 __displayname__ = __progname__ + " " + __version__ + " by 4am (" + __date__ + ")"
 
@@ -22,7 +23,7 @@ kTMAP = b"TMAP"
 kTRKS = b"TRKS"
 kMETA = b"META"
 kBitstreamLengthInBytes = 6646
-kLanguages = ("English","Spanish","French","German","Chinese","Japanese","Italian","Dutch","Portugese","Danish","Finnish","Norwegian","Swedish","Russian","Polish","Turkish","Arabic","Thai","Czech","Hungarian","Catalan","Croatian","Greek","Hebrew","Romanian","Slovak","Ukranian","Indonesian","Malay","Vietnamese","Other")
+kLanguages = ("English","Spanish","French","German","Chinese","Japanese","Italian","Dutch","Portuguese","Danish","Finnish","Norwegian","Swedish","Russian","Polish","Turkish","Arabic","Thai","Czech","Hungarian","Catalan","Croatian","Greek","Hebrew","Romanian","Slovak","Ukranian","Indonesian","Malay","Vietnamese","Other")
 kRequiresRAM = ("16K","24K","32K","48K","64K","128K","256K","512K","768K","1M","1.25M","1.5M+","Unknown")
 kRequiresMachine = ("2","2+","2e","2c","2e+","2gs","2c+","3","3+")
 
@@ -306,6 +307,10 @@ class WozReader(DiskImage, WozValidator):
                 list(map(self.validate_metadata_requires_machine, values))
             self.meta[key] = len(values) == 1 and values[0] or tuple(values)
 
+    def to_json(self):
+        j = {"woz": {"info":self.info, "meta":self.meta}}
+        return json.dumps(j, indent=2)
+
     def seek(self, track_num):
         """returns Track object for the given track, or None if the track is not part of this disk image. track_num can be 0..40 in 0.25 increments (0, 0.25, 0.5, 0.75, 1, &c.)"""
         if type(track_num) != float:
@@ -340,6 +345,12 @@ class WozWriter(WozValidator):
             self.tmap[tmap_id - 1] = trk_id
         if tmap_id < 159:
             self.tmap[tmap_id + 1] = trk_id
+
+    def from_json(self, json_string):
+        j = json.loads(json_string)
+        root = [x for x in j.keys()].pop()
+        self.info.update(j[root]["info"])
+        self.meta.update(j[root]["meta"])
 
     def build_info(self):
         chunk = bytearray()
@@ -497,22 +508,50 @@ class CommandDump(BaseCommand):
             for value in values[1:]:
                 print("META:  ".ljust(self.kWidth), value)
 
-class CommandEdit(BaseCommand):
+class CommandExport(BaseCommand):
     def __init__(self):
-        BaseCommand.__init__(self, "edit")
+        BaseCommand.__init__(self, "export")
 
     def setup(self, subparser):
-        BaseCommand.setup(self,
-                          subparser,
-                          description="Edit information and metadata in a .woz disk image",
-                          epilog="""Tips:
+        BaseCommand.setup(self, subparser,
+                          description="Export (as JSON) all information and metadata from a .woz disk image")
+
+    def __call__(self, args):
+        BaseCommand.__call__(self, args)
+        print(self.woz_image.to_json())
+
+class WriterBaseCommand(BaseCommand):
+    def __call__(self, args):
+        BaseCommand.__call__(self, args)
+        self.args = args
+        # maintain creator if there is one, otherwise use default
+        self.output = WozWriter(self.woz_image.info.get("creator", __displayname__))
+        self.output.tmap = self.woz_image.tmap
+        self.output.tracks = self.woz_image.tracks
+        self.output.info = self.woz_image.info.copy()
+        self.output.meta = self.woz_image.meta.copy()
+        self.update()
+        tmpfile = args.file + ".ardry"
+        with open(tmpfile, "wb") as f:
+            self.output.write(f)
+        os.rename(tmpfile, args.file)
+
+class CommandEdit(WriterBaseCommand):
+    def __init__(self):
+        WriterBaseCommand.__init__(self, "edit")
+
+    def setup(self, subparser):
+        WriterBaseCommand.setup(self,
+                                subparser,
+                                description="Edit information and metadata in a .woz disk image",
+                                epilog="""Tips:
 
  - Use repeated flags to edit multiple fields at once.
  - Use "key:" with no value to delete a metadata field.
  - Keys are case-sensitive.
  - Some values have format restrictions; read the .woz specification.""",
-                          help=".woz disk image (modified in place)",
-                          formatter_class=argparse.RawDescriptionHelpFormatter)
+                                help=".woz disk image (modified in place)",
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
         self.parser.add_argument("-i", "--info", type=str, action="append",
                                  help="""change information field.
 INFO format is "key:value".
@@ -525,39 +564,39 @@ META format is "key:value".
 Standard keys are title, subtitle, publisher, developer, copyright, version, language, requires_ram,
 requires_machine, notes, side, side_name, contributor, image_date. Other keys are allowed.""")
 
-    def __call__(self, args):
-        BaseCommand.__call__(self, args)
-        # maintain creator if there is one, otherwise use default
-        output = WozWriter(self.woz_image.info.get("creator", __displayname__))
-        output.tmap = self.woz_image.tmap
-        output.tracks = self.woz_image.tracks
-        output.info = self.woz_image.info.copy()
-        output.meta = self.woz_image.meta.copy()
+    def update(self):
         # add all new info fields
-        for i in args.info or ():
+        for i in self.args.info or ():
             k, v = i.split(":", 1)
             if k in ("write_protected","synchronized","cleaned"):
                 v = v.lower() in ("1", "true", "yes")
-            output.info[k] = v
-        # add all new metadata fields
-        for m in args.meta or ():
+            self.output.info[k] = v
+        # add all new metadata fields, and delete empty ones
+        for m in self.args.meta or ():
             k, v = m.split(":", 1)
             v = v.split("|")
             if len(v) == 1:
                 v = v[0]
             if v:
-                output.meta[k] = v
-            elif k in output.meta.keys():
-                del output.meta[k]
-        tmpfile = args.file + ".ardry"
-        with open(tmpfile, "wb") as f:
-            output.write(f)
-        os.rename(tmpfile, args.file)
+                self.output.meta[k] = v
+            elif k in self.output.meta.keys():
+                del self.output.meta[k]
+
+class CommandImport(WriterBaseCommand):
+    def __init__(self):
+        WriterBaseCommand.__init__(self, "import")
+
+    def setup(self, subparser):
+        WriterBaseCommand.setup(self, subparser,
+                                description="Import JSON file to update information and metadata in a .woz disk image")
+
+    def update(self):
+        self.output.from_json(sys.stdin.read())
 
 if __name__ == "__main__":
     import sys
     raise_if = lambda cond, e, s="": cond and sys.exit("%s: %s" % (e.__name__, s))
-    cmds = [CommandDump(), CommandVerify(), CommandEdit()]
+    cmds = [CommandDump(), CommandVerify(), CommandEdit(), CommandExport(), CommandImport()]
     parser = argparse.ArgumentParser(prog=__progname__,
                                      description="""A multi-purpose tool for manipulating .woz disk images.
 

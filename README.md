@@ -1,5 +1,5 @@
 ```
-$ ./wozardry verify -h
+$ ./wozardry.py verify -h
 usage: wozardry verify [-h] file
 
 Verify file structure and metadata of a .woz disk image (produces no output
@@ -13,7 +13,7 @@ optional arguments:
 
 
 
-$ ./wozardry dump -h
+$ ./wozardry.py dump -h
 usage: wozardry dump [-h] file
 
 Print all available information and metadata in a .woz disk image
@@ -52,4 +52,26 @@ Tips:
  - Use "key:" with no value to delete a metadata field.
  - Keys are case-sensitive.
  - Some values have format restrictions; read the .woz specification.
+
+$ ./wozardry export -h
+usage: wozardry export [-h] file
+
+Export (as JSON) all information and metadata from a .woz disk image
+
+positional arguments:
+  file        .woz disk image
+
+optional arguments:
+  -h, --help  show this help message and exit
+
+$ ./wozardry import -h
+usage: wozardry import [-h] file
+
+Import JSON file to update information and metadata in a .woz disk image
+
+positional arguments:
+  file        .woz disk image
+
+optional arguments:
+  -h, --help  show this help message and exit
 ```

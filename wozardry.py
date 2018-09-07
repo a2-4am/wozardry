@@ -12,7 +12,7 @@ import itertools
 import os
 
 __version__ = "dev"
-__date__ = "2018-09-06"
+__date__ = "2018-09-07"
 __progname__ = "wozardry"
 __displayname__ = __progname__ + " " + __version__ + " by 4am (" + __date__ + ")"
 
@@ -349,7 +349,6 @@ class WozWriter(WozValidator):
     def from_json(self, json_string):
         j = json.loads(json_string)
         root = [x for x in j.keys()].pop()
-        self.info.update(j[root]["info"])
         self.meta.update(j[root]["meta"])
 
     def build_info(self):

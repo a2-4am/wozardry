@@ -587,7 +587,7 @@ class CommandImport(WriterBaseCommand):
 
     def setup(self, subparser):
         WriterBaseCommand.setup(self, subparser,
-                                description="Import JSON file to update information and metadata in a .woz disk image")
+                                description="Import JSON file to update metadata in a .woz disk image")
 
     def update(self):
         self.output.from_json(sys.stdin.read())

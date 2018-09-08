@@ -11,8 +11,8 @@ import json
 import itertools
 import os
 
-__version__ = "dev"
-__date__ = "2018-09-07"
+__version__ = "1.0"
+__date__ = "2018-09-08"
 __progname__ = "wozardry"
 __displayname__ = __progname__ + " " + __version__ + " by 4am (" + __date__ + ")"
 

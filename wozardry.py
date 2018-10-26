@@ -11,8 +11,8 @@ import json
 import itertools
 import os
 
-__version__ = "1.0"
-__date__ = "2018-09-08"
+__version__ = "1.1pre"
+__date__ = "2018-10-24"
 __progname__ = "wozardry"
 __displayname__ = __progname__ + " " + __version__ + " by 4am (" + __date__ + ")"
 
@@ -124,15 +124,71 @@ class WozTrack(Track):
         self.splice_nibble = splice_nibble
         self.splice_bit_count = splice_bit_count
 
-class DiskImage: # base class
-    def __init__(self, filename=None, stream=None):
-        raise_if(not filename and not stream, WozError, "no input")
-        self.filename = filename
+class WozDiskImage:
+    def __init__(self):
+        self.tmap = [0xFF]*160
         self.tracks = []
+        self.info = collections.OrderedDict()
+        self.meta = collections.OrderedDict()
+
+    def track_num_to_half_phase(self, track_num):
+        if type(track_num) != float:
+            track_num = float(track_num)
+        if track_num < 0.0 or \
+           track_num > 40.0 or \
+           track_num.as_integer_ratio()[1] not in (1,2,4):
+            raise WozError("Invalid track %s" % track_num)
+        return int(track_num * 4)
 
     def seek(self, track_num):
         """returns Track object for the given track, or None if the track is not part of this disk image. track_num can be 0..40 in 0.25 increments (0, 0.25, 0.5, 0.75, 1, &c.)"""
-        return None
+        half_phase = self.track_num_to_half_phase(track_num)
+        trk_id = self.tmap[half_phase]
+        if trk_id == 0xFF: return None
+        return self.tracks[trk_id]
+
+    def clean(self):
+        """removes tracks from self.tracks that are not referenced from self.tmap, and adjusts remaining self.tmap indices"""
+        i = 0
+        while i < len(self.tracks):
+            if i not in self.tmap:
+                del self.tracks[i]
+                for adjust in range(len(self.tmap)):
+                    if (self.tmap[adjust] >= i) and (self.tmap[adjust] != 0xFF):
+                        self.tmap[adjust] -= 1
+            else:
+                i += 1
+
+    def add(self, half_phase, track):
+        trk_id = len(self.tracks)
+        self.tracks.append(track)
+        self.tmap[half_phase] = trk_id
+        if half_phase:
+            self.tmap[half_phase - 1] = trk_id
+        if half_phase < 159:
+            self.tmap[half_phase + 1] = trk_id
+
+    def add_track(self, track_num, track):
+        self.add(self.track_num_to_half_phase(track_num), track)
+
+    def remove(self, half_phase):
+        if self.tmap[half_phase] == 0xFF: return False
+        self.tmap[half_phase] = 0xFF
+        self.clean()
+        return True
+
+    def remove_track(self, track_num):
+        """removes given track, returns True if anything was actually removed, or False if track wasn't found. track_num can be 0..40 in 0.25 increments (0, 0.25, 0.5, 0.75, 1, &c.)"""
+        return self.remove(self.track_num_to_half_phase(track_num))
+
+    def from_json(self, json_string):
+        j = json.loads(json_string)
+        root = [x for x in j.keys()].pop()
+        self.meta.update(j[root]["meta"])
+
+    def to_json(self):
+        j = {"woz": {"info":self.info, "meta":self.meta}}
+        return json.dumps(j, indent=2)
 
 class WozValidator:
     def validate_info_version(self, version):
@@ -190,13 +246,10 @@ class WozValidator:
     def validate_metadata_requires_machine(self, requires_machine):
         raise_if(requires_machine and (requires_machine not in kRequiresMachine), WozMETAFormatError_BadMachine, "Invalid metadata requires_machine")
 
-class WozReader(DiskImage, WozValidator):
+class WozReader(WozDiskImage, WozValidator):
     def __init__(self, filename=None, stream=None):
-        DiskImage.__init__(self, filename, stream)
-        self.tmap = None
-        self.info = collections.OrderedDict()
-        self.meta = collections.OrderedDict()
-
+        WozDiskImage.__init__(self)
+        self.filename = filename
         with stream or open(filename, "rb") as f:
             header_raw = f.read(8)
             raise_if(len(header_raw) != 8, WozEOFError, sEOF)
@@ -307,49 +360,15 @@ class WozReader(DiskImage, WozValidator):
                 list(map(self.validate_metadata_requires_machine, values))
             self.meta[key] = len(values) == 1 and values[0] or tuple(values)
 
-    def to_json(self):
-        j = {"woz": {"info":self.info, "meta":self.meta}}
-        return json.dumps(j, indent=2)
-
-    def seek(self, track_num):
-        """returns Track object for the given track, or None if the track is not part of this disk image. track_num can be 0..40 in 0.25 increments (0, 0.25, 0.5, 0.75, 1, &c.)"""
-        if type(track_num) != float:
-            track_num = float(track_num)
-        if track_num < 0.0 or \
-           track_num > 40.0 or \
-           track_num.as_integer_ratio()[1] not in (1,2,4):
-            raise WozError("Invalid track %s" % track_num)
-        trk_id = self.tmap[int(track_num * 4)]
-        if trk_id == 0xFF: return None
-        return self.tracks[trk_id]
-
-class WozWriter(WozValidator):
+class WozWriter(WozDiskImage, WozValidator):
     def __init__(self, creator):
-        self.info = collections.OrderedDict()
+        WozDiskImage.__init__(self)
         self.info["version"] = 1
         self.info["disk_type"] = 1
         self.info["write_protected"] = False
         self.info["synchronized"] = False
         self.info["cleaned"] = False
         self.info["creator"] = creator
-        self.tracks = []
-        self.tmap = [0xFF]*160
-        self.meta = collections.OrderedDict()
-
-    def add_track(self, track_num, track):
-        tmap_id = int(track_num * 4)
-        trk_id = len(self.tracks)
-        self.tracks.append(track)
-        self.tmap[tmap_id] = trk_id
-        if tmap_id:
-            self.tmap[tmap_id - 1] = trk_id
-        if tmap_id < 159:
-            self.tmap[tmap_id + 1] = trk_id
-
-    def from_json(self, json_string):
-        j = json.loads(json_string)
-        root = [x for x in j.keys()].pop()
-        self.meta.update(j[root]["meta"])
 
     def build_info(self):
         chunk = bytearray()
@@ -581,6 +600,28 @@ requires_machine, notes, side, side_name, contributor, image_date. Other keys ar
             elif k in self.output.meta.keys():
                 del self.output.meta[k]
 
+class CommandRemove(WriterBaseCommand):
+    def __init__(self):
+        WriterBaseCommand.__init__(self, "remove")
+
+    def setup(self, subparser):
+        WriterBaseCommand.setup(self,
+                                subparser,
+                                description="Remove tracks from a .woz disk image",
+                                epilog="""Tips:
+
+ - Tracks can be 0..40 in 0.25 increments (0, 0.25, 0.5, 0.75, 1, &c.)
+ - Use repeated flags to remove multiple tracks at once.
+ - It is harmless to try to remove a track that doesn't exist.""",
+                                help=".woz disk image (modified in place)",
+                                formatter_class=argparse.RawDescriptionHelpFormatter)
+        self.parser.add_argument("-t", "--track", type=str, action="append",
+                                 help="""track to remove""")
+
+    def update(self):
+        for i in self.args.track or ():
+            self.output.remove_track(float(i))
+
 class CommandImport(WriterBaseCommand):
     def __init__(self):
         WriterBaseCommand.__init__(self, "import")
@@ -595,7 +636,7 @@ class CommandImport(WriterBaseCommand):
 if __name__ == "__main__":
     import sys
     raise_if = lambda cond, e, s="": cond and sys.exit("%s: %s" % (e.__name__, s))
-    cmds = [CommandDump(), CommandVerify(), CommandEdit(), CommandExport(), CommandImport()]
+    cmds = [CommandDump(), CommandVerify(), CommandEdit(), CommandRemove(), CommandExport(), CommandImport()]
     parser = argparse.ArgumentParser(prog=__progname__,
                                      description="""A multi-purpose tool for manipulating .woz disk images.
 

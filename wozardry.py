@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# (c) 2018 by 4am
+# (c) 2018-9 by 4am
 # MIT-licensed
 
 import argparse
@@ -11,13 +11,14 @@ import json
 import itertools
 import os
 
-__version__ = "1.1pre"
-__date__ = "2018-10-24"
+__version__ = "2.0-alpha" # https://semver.org
+__date__ = "2019-02-12"
 __progname__ = "wozardry"
 __displayname__ = __progname__ + " " + __version__ + " by 4am (" + __date__ + ")"
 
 # domain-specific constants defined in .woz specification
 kWOZ1 = b"WOZ1"
+kWOZ2 = b"WOZ2"
 kINFO = b"INFO"
 kTMAP = b"TMAP"
 kTRKS = b"TRKS"
@@ -32,6 +33,9 @@ sEOF = "Unexpected EOF"
 sBadChunkSize = "Bad chunk size"
 dNoYes = {False:"no",True:"yes"}
 tQuarters = (".00",".25",".50",".75")
+tDiskType = ("", "5.25-inch", "3.5-inch")
+tDiskSides = ("", "400K", "800K")
+tBootSectorFormat = ("unknown", "16-sector", "13-sector", "hybrid (13- and 16-sector)")
 
 # errors that may be raised
 class WozError(Exception): pass # base class
@@ -39,7 +43,7 @@ class WozCRCError(WozError): pass
 class WozFormatError(WozError): pass
 class WozEOFError(WozFormatError): pass
 class WozHeaderError(WozFormatError): pass
-class WozHeaderError_NoWOZ1(WozHeaderError): pass
+class WozHeaderError_NoWOZMarker(WozHeaderError): pass
 class WozHeaderError_NoFF(WozHeaderError): pass
 class WozHeaderError_NoLF(WozHeaderError): pass
 class WozINFOFormatError(WozFormatError): pass
@@ -49,6 +53,9 @@ class WozINFOFormatError_BadWriteProtected(WozINFOFormatError): pass
 class WozINFOFormatError_BadSynchronized(WozINFOFormatError): pass
 class WozINFOFormatError_BadCleaned(WozINFOFormatError): pass
 class WozINFOFormatError_BadCreator(WozINFOFormatError): pass
+class WozINFOFormatError_BadDiskSides(WozINFOFormatError): pass
+class WozINFOFormatError_BadBootSectorFormat(WozINFOFormatError): pass
+class WozINFOFormatError_BadOptimalBitTiming(WozINFOFormatError): pass
 class WozTMAPFormatError(WozFormatError): pass
 class WozTMAPFormatError_BadTRKS(WozTMAPFormatError): pass
 class WozTRKSFormatError(WozFormatError): pass
@@ -126,6 +133,7 @@ class WozTrack(Track):
 
 class WozDiskImage:
     def __init__(self):
+        self.woz_version = None
         self.tmap = [0xFF]*160
         self.tracks = []
         self.info = collections.OrderedDict()
@@ -192,7 +200,10 @@ class WozDiskImage:
 
 class WozValidator:
     def validate_info_version(self, version):
-        raise_if(version != b'\x01', WozINFOFormatError_BadVersion, "Unknown version (expected 1, found %s)" % version)
+        if self.woz_version == 1:
+            raise_if(version != b'\x01', WozINFOFormatError_BadVersion, "Unknown version (expected 1, found %s)" % version)
+        else:
+            raise_if(version in (b'\x00', b'\x01'), WozINFOFormatError_BadVersion, "Unknown version (expected 2 or more, found %s)" % version)
 
     def validate_info_disk_type(self, disk_type):
         raise_if(disk_type not in (b'\x01',b'\x02'), WozINFOFormatError_BadDiskType, "Unknown disk type (expected 1 or 2, found %s)" % disk_type)
@@ -221,6 +232,28 @@ class WozValidator:
     def decode_info_creator(self, creator_as_bytes):
         self.validate_info_creator(creator_as_bytes)
         return creator_as_bytes.decode("UTF-8").strip()
+
+    def validate_info_disk_sides(self, disk_sides):
+        # assumes WOZ version 2 or later
+        if self.info["disk_type"] == 1: # 5.25-inch disk
+            raise_if(disk_sides != b'\x01', WozINFOFormatError_BadDiskSides, "Bad disk sides (expected 1 for a 5.25-inch disk, found %s)" % disk_sides)
+        elif self.info["disk_type"] == 2: # 3.5-inch disk
+            raise_if(disk_sides not in (b'\x01', b'\x02'), WozINFOFormatError_BadDiskSides, "Bad disk sides (expected 1 or 2 for a 3.5-inch disk, found %s)" % disk_sides)
+
+    def validate_info_boot_sector_format(self, boot_sector_format):
+        # assumes WOZ version 2 or later
+        if self.info["disk_type"] == 1: # 5.25-inch disk
+            raise_if(boot_sector_format not in (b'\x00',b'\x01',b'\x02',b'\x03'), WozINFOFormatError_BadBootSectorFormat, "Bad boot sector format (expected 0,1,2,3 for a 5.25-inch disk, found %s)" % boot_sector_format)
+        elif self.info["disk_type"] == 2: # 3.5-inch disk
+            raise_if(boot_sector_format != b'\x00', WozINFOFormatError_BadBootSectorFormat, "Bad boot sector format (expected 0 for a 3.5-inch disk, found %s)" % boot_sector_format)
+
+    def validate_info_optimal_bit_timing(self, optimal_bit_timing):
+        # assumes WOZ version 2 or later
+        # |optimal_bit_timing| is int, not bytes
+        if self.info["disk_type"] == 1: # 5.25-inch disk
+            raise_if(optimal_bit_timing not in range(24, 41), WozINFOFormatError_BadOptimalBitTiming, "Bad optimal bit timing (expected 24-40 for a 5.25-inch disk, found %s)" % optimal_bit_timing)
+        elif self.info["disk_type"] == 2: # 3.5-inch disk
+            raise_if(optimal_bit_timing not in range(8, 25), WozINFOFormatError_BadOptimalBitTiming, "Bad optimal bit timing (expected 8-24 for a 3.5-inch disk, found %s)" % optimal_bit_timing)
 
     def validate_metadata(self, metadata_as_bytes):
         try:
@@ -284,33 +317,72 @@ class WozReader(WozDiskImage, WozValidator):
                 raise_if(crc != binascii.crc32(b"".join(all_data)) & 0xffffffff, WozCRCError, "Bad CRC")
 
     def __process_header(self, data):
-        raise_if(data[:4] != kWOZ1, WozHeaderError_NoWOZ1, "Magic string 'WOZ1' not present at offset 0")
+        raise_if(data[:4] not in (kWOZ1, kWOZ2), WozHeaderError_NoWOZMarker, "Magic string 'WOZ1' or 'WOZ2' not present at offset 0")
+        self.woz_version = int(data[3]) - 0x30
         raise_if(data[4] != 0xFF, WozHeaderError_NoFF, "Magic byte 0xFF not present at offset 4")
         raise_if(data[5:8] != b"\x0A\x0D\x0A", WozHeaderError_NoLF, "Magic bytes 0x0A0D0A not present at offset 5")
 
     def __process_info(self, data):
         version = data[0]
         self.validate_info_version(to_uint8(version))
+        self.info["version"] = version # int
         disk_type = data[1]
         self.validate_info_disk_type(to_uint8(disk_type))
+        self.info["disk_type"] = disk_type # int
         write_protected = data[2]
         self.validate_info_write_protected(to_uint8(write_protected))
+        self.info["write_protected"] = (write_protected == 1) # boolean
         synchronized = data[3]
+        self.info["synchronized"] = (synchronized == 1) # boolean
         self.validate_info_synchronized(to_uint8(synchronized))
         cleaned = data[4]
         self.validate_info_cleaned(to_uint8(cleaned))
-        creator = self.decode_info_creator(data[5:37])
-        self.info["version"] = version # int
-        self.info["disk_type"] = disk_type # int
-        self.info["write_protected"] = (write_protected == 1) # boolean
-        self.info["synchronized"] = (synchronized == 1) # boolean
         self.info["cleaned"] = (cleaned == 1) # boolean
+        creator = self.decode_info_creator(data[5:37])
         self.info["creator"] = creator # string
+        if version >= 2:
+            disk_sides = data[37]
+            self.validate_info_disk_sides(to_uint8(disk_sides))
+            self.info["disk_sides"] = disk_sides # int
+            boot_sector_format = data[38]
+            self.validate_info_boot_sector_format(to_uint8(boot_sector_format))
+            self.info["boot_sector_format"] = boot_sector_format # int
+            optimal_bit_timing = data[39]
+            self.validate_info_optimal_bit_timing(optimal_bit_timing)
+            self.info["optimal_bit_timing"] = optimal_bit_timing # int
+            #TODO self.info["compatible_hardware"] = from_uint16(data[40:42])
+            self.info["required_ram"] = from_uint16(data[42:44])
+            self.info["largest_track"] = from_uint16(data[44:46])
 
     def __process_tmap(self, data):
         self.tmap = list(data)
 
     def __process_trks(self, data):
+        if self.info["version"] == 1:
+            self.__process_trks_v1(data)
+        else:
+            self.__process_trks_v2(data)
+        for trk, i in zip(self.tmap, itertools.count()):
+            raise_if(trk != 0xFF and trk >= len(self.tracks), WozTMAPFormatError_BadTRKS, "Invalid TMAP entry: track %d%s points to non-existent TRKS chunk %d" % (i/4, tQuarters[i%4], trk))
+
+    def __process_trks_v2(self, data):
+        for trk in range(160):
+            i = trk * 8
+            starting_block = from_uint16(data[i:i+2])
+            raise_if(starting_block in (1,2), WozTRKSFormatError, "TRKS TRK %d starting_block out of range (expected 3+ or 0, found %s)" % (trk, starting_block))
+            block_count = from_uint16(data[i+2:i+4])
+            bit_count = from_uint32(data[i+4:i+8])
+            if starting_block == 0:
+                raise_if(block_count != 0, WozTRKSFormatError, "TRKS unused TRK %d block_count must be 0 (found %s)" % (trk, block_count))
+                raise_if(bit_count != 0, WozTRKSFormatError, "TRKS unused TRK %d bit_count must be 0 (found %s)" % (trk, bit_count))
+                break
+            bits_index_into_data = 1280 + (starting_block-3)*512
+            raw_bytes = data[bits_index_into_data : bits_index_into_data + block_count*512]
+            bits = bitarray.bitarray(endian="big")
+            bits.frombytes(raw_bytes)
+            self.tracks.append(WozTrack(bits, bit_count))
+
+    def __process_trks_v1(self, data):
         i = 0
         while i < len(data):
             raw_bytes = data[i:i+kBitstreamLengthInBytes]
@@ -340,8 +412,6 @@ class WozReader(WozDiskImage, WozValidator):
             bits = bitarray.bitarray(endian="big")
             bits.frombytes(raw_bytes)
             self.tracks.append(WozTrack(bits, bit_count, splice_point, splice_nibble, splice_bit_count))
-        for trk, i in zip(self.tmap, itertools.count()):
-            raise_if(trk != 0xFF and trk >= len(self.tracks), WozTMAPFormatError_BadTRKS, "Invalid TMAP entry: track %d%s points to non-existent TRKS chunk %d" % (i/4, tQuarters[i%4], trk))
 
     def __process_meta(self, metadata_as_bytes):
         metadata = self.decode_metadata(metadata_as_bytes)
@@ -505,11 +575,22 @@ class CommandDump(BaseCommand):
 
     def print_info(self):
         print("INFO:  File format version:".ljust(self.kWidth), "%d" % self.woz_image.info["version"])
-        print("INFO:  Disk type:".ljust(self.kWidth),           ("5.25-inch", "3.5-inch")[self.woz_image.info["disk_type"]-1])
+        print("INFO:  Disk type:".ljust(self.kWidth),           tDiskType[self.woz_image.info["disk_type"]])
         print("INFO:  Write protected:".ljust(self.kWidth),     dNoYes[self.woz_image.info["write_protected"]])
         print("INFO:  Track synchronized:".ljust(self.kWidth),  dNoYes[self.woz_image.info["synchronized"]])
         print("INFO:  Weakbits cleaned:".ljust(self.kWidth),    dNoYes[self.woz_image.info["cleaned"]])
         print("INFO:  Creator:".ljust(self.kWidth),             self.woz_image.info["creator"])
+        if self.woz_image.info["version"] >= 2:
+            if self.woz_image.info["disk_type"] == 2: # 3.5-inch disk
+                # only print this for 3.5-inch disks
+                disk_sides = self.woz_image.info["disk_sides"]
+                print("INFO:  Disk sides:".ljust(self.kWidth), "%s (%s)" % (disk_sides, tDiskSides[disk_sides]))
+            if self.woz_image.info["disk_type"] == 1: # 5.25-inch disk
+                print("INFO:  Boot sector format:".ljust(self.kWidth), tBootSectorFormat[self.woz_image.info["boot_sector_format"]])
+                print("INFO:  Optimal bit timing:".ljust(self.kWidth), self.woz_image.info["optimal_bit_timing"])
+                #TODO self.info["compatible_hardware"]
+                ram = self.woz_image.info["required_ram"]
+                print("INFO:  Required RAM:".ljust(self.kWidth), ram and "%sK" % ram or "unknown")
 
     def print_tmap(self):
         i = 0

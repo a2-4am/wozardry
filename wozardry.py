@@ -498,20 +498,20 @@ class WozReader(WozDiskImage, WozValidator):
 class WozWriter(WozDiskImage, WozValidator):
     def __init__(self, woz_version, creator):
         WozDiskImage.__init__(self)
-        self.validate_info_version(woz_version)
         self.woz_version = woz_version
         self.info["version"] = woz_version
+        self.validate_info_version(woz_version)
         self.info["disk_type"] = 1
         self.info["write_protected"] = False
         self.info["synchronized"] = False
         self.info["cleaned"] = False
         self.info["creator"] = creator
-        if woz_version >= 2:
-            self.info["disk_sides"] = 1
-            self.info["boot_sector_format"] = 0
-            self.info["optimal_bit_timing"] = 32
-            self.info["compatible_hardware"] = []
-            self.info["required_ram"] = 0
+        self.encode_info_creator(creator)
+        self.info["disk_sides"] = 1
+        self.info["boot_sector_format"] = 0
+        self.info["optimal_bit_timing"] = 32
+        self.info["compatible_hardware"] = []
+        self.info["required_ram"] = 0
 
     def build_info(self):
         chunk = bytearray()
@@ -800,7 +800,7 @@ class WriterBaseCommand(BaseCommand):
                                 self.woz_image.info.get("creator", __displayname__))
         self.output.tmap = self.woz_image.tmap
         self.output.tracks = self.woz_image.tracks
-        self.output.info = self.woz_image.info.copy()
+        self.output.info.update(self.woz_image.info)
         self.output.writ = self.woz_image.writ
         self.output.meta = self.woz_image.meta.copy()
         self.update()
@@ -853,7 +853,10 @@ requires_machine, notes, side, side_name, contributor, image_date. Other keys ar
         for i in self.args.info or ():
             k, v = i.split(":", 1)
             if k == "version":
-                self.output.info["version"] = self.output.validate_info_version(v)
+                v = from_intish(v, WozINFOFormatError_BadVersion, "Unknown version (expected numeric value, found %s)")
+                raise_if(v not in (1,2), WozINFOFormatError_BadVersion, "Unknown version (expected 1 or 2, found %s) % v")
+                self.output.woz_version = v
+                self.output.info["version"] = v
 
         # 2nd update disk_type info field
         for i in self.args.info or ():
@@ -940,7 +943,7 @@ class CommandImport(WriterBaseCommand):
 if __name__ == "__main__":
     import sys
     old_raise_if = raise_if
-    raise_if = lambda cond, e, s="": cond and sys.exit("%s: %s" % (e.__name__, s))
+#    raise_if = lambda cond, e, s="": cond and sys.exit("%s: %s" % (e.__name__, s))
     cmds = [CommandDump(), CommandVerify(), CommandEdit(), CommandRemove(), CommandExport(), CommandImport()]
     parser = argparse.ArgumentParser(prog=__progname__,
                                      description="""A multi-purpose tool for manipulating .woz disk images.

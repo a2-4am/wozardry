@@ -750,10 +750,26 @@ class CommandDump(BaseCommand):
         print("INFO:  Largest track:".ljust(self.kWidth), info["largest_track"], "blocks")
 
     def print_tmap(self):
+        if self.woz_image.info["disk_type"] == 1:
+            self.print_tmap_525()
+        else:
+            self.print_tmap_35()
+
+    def print_tmap_525(self):
         i = 0
         for trk, i in zip(self.woz_image.tmap, itertools.count()):
             if trk != 0xFF:
                 print(("TMAP:  Track %d%s" % (i/4, tQuarters[i%4])).ljust(self.kWidth), "TRKS %d" % (trk))
+
+    def print_tmap_35(self):
+        track_num = 0
+        side_num = 0
+        for trk in self.woz_image.tmap:
+            if trk != 0xFF:
+                print(("TMAP:  Track %d, Side %d" % (track_num, side_num)).ljust(self.kWidth), "TRKS %d" % (trk))
+            side_num = 1 - side_num
+            if not side_num:
+                track_num += 1
 
     def print_meta(self):
         if not self.woz_image.meta: return
@@ -791,7 +807,11 @@ class WriterBaseCommand(BaseCommand):
         tmpfile = args.file + ".ardry"
         with open(tmpfile, "wb") as f:
             self.output.write(f)
+        # as a final sanity check, load and parse the temporary file we just created
+        # to help ensure we never create invalid .woz files
         try:
+            global raise_if
+            raise_if = old_raise_if
             WozReader(tmpfile)
         except Exception as e:
             sys.stderr.write("WozInternalError: refusing to write an invalid .woz file (this is the developer's fault)\n")
@@ -890,7 +910,7 @@ class CommandRemove(WriterBaseCommand):
     def setup(self, subparser):
         WriterBaseCommand.setup(self,
                                 subparser,
-                                description="Remove tracks from a .woz disk image",
+                                description="Remove tracks from a 5.25-inch .woz disk image",
                                 epilog="""Tips:
 
  - Tracks can be 0..40 in 0.25 increments (0, 0.25, 0.5, 0.75, 1, &c.)
@@ -902,6 +922,7 @@ class CommandRemove(WriterBaseCommand):
                                  help="""track to remove""")
 
     def update(self):
+        raise_if(self.output.info["disk_type"] != 1, WozINFOFormatError_BadDiskType, "Can not remove tracks from 3.5-inch disks")
         for i in self.args.track or ():
             self.output.remove_track(float(i))
 
@@ -918,6 +939,7 @@ class CommandImport(WriterBaseCommand):
 
 if __name__ == "__main__":
     import sys
+    old_raise_if = raise_if
     raise_if = lambda cond, e, s="": cond and sys.exit("%s: %s" % (e.__name__, s))
     cmds = [CommandDump(), CommandVerify(), CommandEdit(), CommandRemove(), CommandExport(), CommandImport()]
     parser = argparse.ArgumentParser(prog=__progname__,

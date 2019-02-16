@@ -88,7 +88,7 @@ def is_booleanish(v):
         try:
             return is_booleanish(int(v))
         except:
-            return v.lower() in ("true","false","yes","no")
+            return v.lower() in ("true","false","yes","no","1","0")
     elif type(v) is bytes:
         try:
             return is_booleanish(int.from_bytes(v, byteorder="little"))
@@ -99,7 +99,7 @@ def is_booleanish(v):
 def from_booleanish(v, errorClass, errorString):
     raise_if(not is_booleanish(v), errorClass, errorString % v)
     if type(v) is str:
-        return v.lower() in ("true","yes")
+        return v.lower() in ("true","yes","1")
     elif type(v) is bytes:
         return v == b"\x01"
     return v == 1
@@ -874,7 +874,7 @@ requires_machine, notes, side, side_name, contributor, image_date. Other keys ar
             elif k == "synchronized":
                 self.output.info[k] = self.output.validate_info_synchronized(v)
             elif k == "cleaned":
-                self.output.info[k] == self.output.validate_info_cleaned(v)
+                self.output.info[k] = self.output.validate_info_cleaned(v)
             if self.output.info["version"] == 1: continue
 
             # remaining fields are only recognized in WOZ2 files (v2+ INFO chunk)

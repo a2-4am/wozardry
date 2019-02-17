@@ -12,7 +12,7 @@ import itertools
 import os
 
 __version__ = "2.0-alpha" # https://semver.org
-__date__ = "2019-02-15"
+__date__ = "2019-02-17"
 __progname__ = "wozardry"
 __displayname__ = __progname__ + " " + __version__ + " by 4am (" + __date__ + ")"
 
@@ -278,7 +278,7 @@ class WozValidator:
     def validate_info_creator(self, creator_as_bytes):
         raise_if(len(creator_as_bytes) > 32, WozINFOFormatError_BadCreator, "Creator is longer than 32 bytes")
         try:
-            creator_as_bytes.decode("UTF-8")
+            return creator_as_bytes.decode("UTF-8").strip()
         except:
             raise_if(True, WozINFOFormatError_BadCreator, "Creator is not valid UTF-8")
 
@@ -286,10 +286,6 @@ class WozValidator:
         creator_as_bytes = creator_as_string.encode("UTF-8").ljust(32, b" ")
         self.validate_info_creator(creator_as_bytes)
         return creator_as_bytes
-
-    def decode_info_creator(self, creator_as_bytes):
-        self.validate_info_creator(creator_as_bytes)
-        return creator_as_bytes.decode("UTF-8").strip()
 
     def validate_info_disk_sides(self, disk_sides):
         """|disk_sides| can be str, bytes, or int. returns same value as int"""
@@ -402,7 +398,7 @@ class WozReader(WozDiskImage, WozValidator):
         self.info["write_protected"] = self.validate_info_write_protected(data[2]) # boolean
         self.info["synchronized"] = self.validate_info_synchronized(data[3]) # boolean
         self.info["cleaned"] = self.validate_info_cleaned(data[4]) # boolean
-        self.info["creator"] = self.decode_info_creator(data[5:37]) # string
+        self.info["creator"] = self.validate_info_creator(data[5:37]) # string
         if self.info["version"] >= 2:
             self.info["disk_sides"] = self.validate_info_disk_sides(data[37]) # int
             self.info["boot_sector_format"] = self.validate_info_boot_sector_format(data[38]) # int
@@ -875,6 +871,8 @@ requires_machine, notes, side, side_name, contributor, image_date. Other keys ar
                 self.output.info[k] = self.output.validate_info_synchronized(v)
             elif k == "cleaned":
                 self.output.info[k] = self.output.validate_info_cleaned(v)
+            elif k == "creator":
+                self.output.info[k] = self.output.validate_info_creator(self.output.encode_info_creator(v))
             if self.output.info["version"] == 1: continue
 
             # remaining fields are only recognized in WOZ2 files (v2+ INFO chunk)

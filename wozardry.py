@@ -38,7 +38,7 @@ tDiskType = {(1,1,False): "5.25-inch (140K)",
              (2,1,False): "3.5-inch (400K)",
              (2,2,False): "3.5-inch (800K)",
              (2,2,True):  "3.5-inch (1.44MB)"}
-tBootSectorFormat = ("unknown", "16-sector", "13-sector", "hybrid (13- and 16-sector)")
+tBootSectorFormat = ("unknown", "16-sector", "13-sector", "hybrid 13- and 16-sector")
 
 # errors that may be raised
 class WozError(Exception): pass # base class

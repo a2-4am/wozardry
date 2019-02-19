@@ -545,8 +545,11 @@ class WozWriter(WozDiskImage, WozValidator):
                     compatible_hardware_bitfield |= (1 << offset)
             compatible_hardware_raw = to_uint16(compatible_hardware_bitfield)
             required_ram_raw = to_uint16(self.info["required_ram"])
-            largest_bit_count = max([track.bit_count for track in self.tracks])
-            largest_block_count = (((largest_bit_count+7)//8)+511)//512
+            if self.tracks:
+                largest_bit_count = max([track.bit_count for track in self.tracks])
+                largest_block_count = (((largest_bit_count+7)//8)+511)//512
+            else:
+                largest_block_count = 0
             largest_track_raw = to_uint16(largest_block_count)
             chunk.extend(disk_sides_raw) # 1 byte, 1 or 2
             chunk.extend(boot_sector_format_raw) # 1 byte, 0,1,2,3

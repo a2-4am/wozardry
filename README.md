@@ -1,3 +1,15 @@
+# Installation
+
+`wozardry` is written in [Python 3](https://www.python.org).
+
+It requires [bitarray](https://pypi.org/project/bitarray/), which can be installed thusly:
+
+```
+$ pip3 install -U bitarray
+```
+
+(Developers who wish to run the test suite should also install the `pytest` module with `pip3 install -U pytest`)
+
 # Command line usage
 
 wozardry is primarily designed to be used on the command line to directly manipulate `.woz` disk images. It supports multiple commands, which are listed in the `wozardry -h` output.

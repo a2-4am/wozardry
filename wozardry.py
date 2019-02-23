@@ -10,9 +10,10 @@ import collections
 import json
 import itertools
 import os
+import sys
 
-__version__ = "2.0-alpha" # https://semver.org
-__date__ = "2019-02-17"
+__version__ = "2.0-beta" # https://semver.org
+__date__ = "2019-02-23"
 __progname__ = "wozardry"
 __displayname__ = __progname__ + " " + __version__ + " by 4am (" + __date__ + ")"
 
@@ -28,6 +29,7 @@ kBitstreamLengthInBytes = 6646
 kLanguages = ("English","Spanish","French","German","Chinese","Japanese","Italian","Dutch","Portuguese","Danish","Finnish","Norwegian","Swedish","Russian","Polish","Turkish","Arabic","Thai","Czech","Hungarian","Catalan","Croatian","Greek","Hebrew","Romanian","Slovak","Ukrainian","Indonesian","Malay","Vietnamese","Other")
 kRequiresRAM = ("16K","24K","32K","48K","64K","128K","256K","512K","768K","1M","1.25M","1.5M+","Unknown")
 kRequiresMachine = ("2","2+","2e","2c","2e+","2gs","2c+","3","3+")
+kDefaultBitTiming = (0, 32, 16)
 
 # strings and things, for print routines and error messages
 sEOF = "Unexpected EOF"
@@ -50,6 +52,7 @@ class WozHeaderError_NoWOZMarker(WozHeaderError): pass
 class WozHeaderError_NoFF(WozHeaderError): pass
 class WozHeaderError_NoLF(WozHeaderError): pass
 class WozINFOFormatError(WozFormatError): pass
+class WozINFOFormatError_MissingINFOChunk(WozINFOFormatError): pass
 class WozINFOFormatError_BadVersion(WozINFOFormatError): pass
 class WozINFOFormatError_BadDiskType(WozINFOFormatError): pass
 class WozINFOFormatError_BadWriteProtected(WozINFOFormatError): pass
@@ -59,7 +62,9 @@ class WozINFOFormatError_BadCreator(WozINFOFormatError): pass
 class WozINFOFormatError_BadDiskSides(WozINFOFormatError): pass
 class WozINFOFormatError_BadBootSectorFormat(WozINFOFormatError): pass
 class WozINFOFormatError_BadOptimalBitTiming(WozINFOFormatError): pass
+class WozINFOFormatError_BadCompatibleHardware(WozINFOFormatError): pass
 class WozTMAPFormatError(WozFormatError): pass
+class WozTMAPFormatError_MissingTMAPChunk(WozTMAPFormatError): pass
 class WozTMAPFormatError_BadTRKS(WozTMAPFormatError): pass
 class WozTRKSFormatError(WozFormatError): pass
 class WozMETAFormatError(WozFormatError): pass
@@ -317,6 +322,13 @@ class WozValidator:
             raise_if(optimal_bit_timing not in range(8, 25), WozINFOFormatError_BadOptimalBitTiming, "Bad optimal bit timing (expected 8-24 for a 3.5-inch disk, found %s)" % optimal_bit_timing)
         return optimal_bit_timing
 
+    def validate_info_compatible_hardware(self, compatible_hardware):
+        """|compatible_hardware| is bytes, returns same value as int"""
+        # assumes WOZ version 2 or later
+        compatible_hardware = from_uint16(compatible_hardware)
+        raise_if(compatible_hardware >= 0x01FF, WozINFOFormatError_BadCompatibleHardware, "Bad compatible hardware (7 high bits must be 0 but some were 1)")
+        return compatible_hardware
+
     def validate_info_required_ram(self, required_ram):
         """|required_ram| can be str, bytes, or int. returns same value as int"""
         # assumes WOZ version 2 or later
@@ -351,6 +363,8 @@ class WozReader(WozDiskImage, WozValidator):
     def __init__(self, filename=None, stream=None):
         WozDiskImage.__init__(self)
         self.filename = filename
+        seen_info = False
+        seen_tmap = False
         with stream or open(filename, "rb") as f:
             header_raw = f.read(8)
             raise_if(len(header_raw) != 8, WozEOFError, sEOF)
@@ -374,15 +388,23 @@ class WozReader(WozDiskImage, WozValidator):
                 if chunk_id == kINFO:
                     raise_if(chunk_size != 60, WozINFOFormatError, sBadChunkSize)
                     self.__process_info(data)
-                elif chunk_id == kTMAP:
+                    seen_info = True
+                    continue
+                raise_if(not seen_info, WozINFOFormatError_MissingINFOChunk, "Expected INFO chunk at offset 20")
+                if chunk_id == kTMAP:
                     raise_if(chunk_size != 160, WozTMAPFormatError, sBadChunkSize)
                     self.__process_tmap(data)
-                elif chunk_id == kTRKS:
+                    seen_tmap = True
+                    continue
+                raise_if(not seen_tmap, WozTMAPFormatError_MissingTMAPChunk, "Expected TMAP chunk at offset 88")
+                if chunk_id == kTRKS:
                     self.__process_trks(data)
                 elif chunk_id == kWRIT:
                     self.__process_writ(data)
                 elif chunk_id == kMETA:
                     self.__process_meta(data)
+            raise_if(not seen_info, WozINFOFormatError_MissingINFOChunk, "Expected INFO chunk at offset 20")
+            raise_if(not seen_tmap, WozTMAPFormatError_MissingTMAPChunk, "Expected TMAP chunk at offset 88")
             if crc:
                 raise_if(crc != binascii.crc32(b"".join(all_data)) & 0xffffffff, WozCRCError, "Bad CRC")
 
@@ -403,7 +425,7 @@ class WozReader(WozDiskImage, WozValidator):
             self.info["disk_sides"] = self.validate_info_disk_sides(data[37]) # int
             self.info["boot_sector_format"] = self.validate_info_boot_sector_format(data[38]) # int
             self.info["optimal_bit_timing"] = self.validate_info_optimal_bit_timing(data[39]) # int
-            compatible_hardware_bitfield = from_uint16(data[40:42])
+            compatible_hardware_bitfield = self.validate_info_compatible_hardware(data[40:42]) # int
             compatible_hardware_list = []
             for offset in range(9):
                 if compatible_hardware_bitfield & (1 << offset):
@@ -729,10 +751,9 @@ class CommandDump(BaseCommand):
         if disk_type == 1: # 5.25-inch disk
             boot_sector_format = info["boot_sector_format"]
             print("INFO:  Boot sector format:".ljust(self.kWidth), "%s (%s)" % (boot_sector_format, tBootSectorFormat[boot_sector_format]))
-            default_bit_timing = 32
         else: # 3.5-inch disk
             print("INFO:  Disk sides:".ljust(self.kWidth), disk_sides)
-            default_bit_timing = 16
+        default_bit_timing = kDefaultBitTiming[disk_type]
         optimal_bit_timing = info["optimal_bit_timing"]
         print("INFO:  Optimal bit timing:".ljust(self.kWidth), optimal_bit_timing,
               optimal_bit_timing == default_bit_timing and "(standard)" or
@@ -811,6 +832,9 @@ class WriterBaseCommand(BaseCommand):
         try:
             global raise_if
             raise_if = old_raise_if
+        except:
+            pass
+        try:
             WozReader(tmpfile)
         except Exception as e:
             sys.stderr.write("WozInternalError: refusing to write an invalid .woz file (this is the developer's fault)\n")
@@ -861,7 +885,11 @@ requires_machine, notes, side, side_name, contributor, image_date. Other keys ar
         for i in self.args.info or ():
             k, v = i.split(":", 1)
             if k == "disk_type":
-                self.output.info["disk_type"] = self.output.validate_info_disk_type(v)
+                old_disk_type = self.output.info["disk_type"]
+                new_disk_type = self.output.validate_info_disk_type(v)
+                if old_disk_type != new_disk_type:
+                    self.output.info["disk_type"] = new_disk_type
+                    self.output.info["optimal_bit_timing"] = kDefaultBitTiming[new_disk_type]
 
         # then update all other info fields
         for i in self.args.info or ():
@@ -941,10 +969,7 @@ class CommandImport(WriterBaseCommand):
     def update(self):
         self.output.from_json(sys.stdin.read())
 
-if __name__ == "__main__":
-    import sys
-    old_raise_if = raise_if
-#    raise_if = lambda cond, e, s="": cond and sys.exit("%s: %s" % (e.__name__, s))
+def parse_args(args):
     cmds = [CommandDump(), CommandVerify(), CommandEdit(), CommandRemove(), CommandExport(), CommandImport()]
     parser = argparse.ArgumentParser(prog=__progname__,
                                      description="""A multi-purpose tool for manipulating .woz disk images.
@@ -955,5 +980,10 @@ See '""" + __progname__ + """ <command> -h' for help on individual commands.""",
     sp = parser.add_subparsers(dest="command", help="command")
     for command in cmds:
         command.setup(sp)
-    args = parser.parse_args()
+    args = parser.parse_args(args)
     args.action(args)
+
+if __name__ == "__main__":
+    old_raise_if = raise_if
+    raise_if = lambda cond, e, s="": cond and sys.exit("%s: %s" % (e.__name__, s))
+    parse_args(sys.argv[1:])

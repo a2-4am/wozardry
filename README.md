@@ -1,41 +1,72 @@
-# Installation
+# `wozardry`
+
+`wozardry` is a multi-purpose tool for manipulating `.woz` disk images. It can
+validate file structure, edit metadata, import and export metadata in `JSON`
+format, remove unused tracks, and provides a programmatic interface to "read"
+bits and nibbles from a disk image. It supports both WOZ 1.0 and WOZ 2.0 files
+and can convert files from one version to the other.
+
+* [Installation](#installation)
+* [Command line interface](#command-line-interface)
+  * [`verify` command](#verify-command)
+  * [`dump` command](#dump-command)
+  * [`edit` command](#edit-command)
+  * [How to convert WOZ1 to WOZ2 files](#how-to-convert-woz1-to-woz2-files)
+  * [`import` and `export` commands](#import-and-export-commands)
+  * [`remove` command](#remove-command)
+* [Python interface](#python-interface)
+  * [`WozDiskImage`](#wozdiskimage)
+  * [Loading and saving files on disk](#loading-and-saving-files-on-disk)
+
+## Installation
 
 `wozardry` is written in [Python 3](https://www.python.org).
 
-It requires [bitarray](https://pypi.org/project/bitarray/), which can be installed thusly:
+It requires [bitarray](https://pypi.org/project/bitarray/), which can be
+installed thusly:
 
 ```
 $ pip3 install -U bitarray
 ```
 
-(Developers who wish to run the test suite should also install the `pytest` module with `pip3 install -U pytest`)
+(Developers who wish to run the test suite should also install the `pytest`
+module with `pip3 install -U pytest`)
 
-# Command line usage
+## Command line interface
 
-wozardry is primarily designed to be used on the command line to directly manipulate `.woz` disk images. It supports multiple commands, which are listed in the `wozardry -h` output.
+wozardry is primarily designed to be used on the command line to directly
+manipulate `.woz` disk images in place. It supports multiple commands, which are
+listed in the `wozardry -h` output.
 
-## `verify` command
+### `verify` command
 
-This command verifies the file structure and metadata of a `.woz` disk image.  It produces no output unless a problem is found.
+This command verifies the file structure and metadata of a `.woz` disk image.
+It produces no output unless a problem is found.
 
 Sample usage:
 
 ```
-$ wozardry verify "woz test images/WOZ 2.0/DOS 3.3 System Master.woz"
+$ wozardry verify "WOZ 2.0/DOS 3.3 System Master.woz"
 ```
 
-**Tip**: you can [download a collection of .woz test images](http://evolutioninteractive.com/applesauce/woz_images.zip).
+**Tip**: you can [download a collection of .woz test
+images](http://evolutioninteractive.com/applesauce/woz_images.zip).
 
-The `verify` command does not "read" the data on the disk like an emulator would. It merely verifies the structure of the `.woz` file itself and applies a few sanity checks on the embedded metadata (if any). The disk may or may not boot in an emulator. It may not pass its own copy protection checks. It may not have the data you expected, or any data at all. `wozardry` can't answer those questions.
+The `verify` command does not "read" the data on the disk like an emulator
+would. It merely verifies the structure of the `.woz` file itself and applies a
+few sanity checks on the embedded metadata (if any). The disk may or may not
+boot in an emulator. It may not pass its own copy protection checks. It may not
+have the data you expected, or any data at all. `wozardry` can't answer those
+questions.
 
-## `dump` command
+### `dump` command
 
 Prints all available information and metadata in a `.woz` disk image.
 
 Sample usage:
 
 ```
-$ wozardry dump "woz test images/WOZ 2.0/Wings of Fury - Disk 1, Side A.woz"
+$ wozardry dump "WOZ 2.0/Wings of Fury - Disk 1, Side A.woz"
 TMAP:  Track 0.00              TRKS 0
 TMAP:  Track 0.25              TRKS 0
 TMAP:  Track 0.75              TRKS 1
@@ -79,25 +110,36 @@ INFO:  Required RAM:           128K
 INFO:  Largest track:          13 blocks
 ```
 
-The `TMAP` section (stands for "track map") shows which tracks are included in the disk image. As you can see from the above sample, the same bitstream data can be assigned to multiple tracks, usually adjacent quarter tracks. Each bitstream is stored only once in the `.woz` file.
+The `TMAP` section (stands for "track map") shows which tracks are included in
+the disk image. As you can see from the above sample, the same bitstream data
+can be assigned to multiple tracks, usually adjacent quarter tracks. Each
+bitstream is stored only once in the `.woz` file.
 
-The `META` section shows any embedded metadata, such as copyright and version. This section is optional; not all `.woz` files will have the same metadata fields, and some may have none at all.
+The `META` section shows any embedded metadata, such as copyright and
+version. This section is optional; not all `.woz` files will have the same
+metadata fields, and some may have none at all.
 
-The `INFO` section shows information that emulators or other programs might need to know, such as the boot sector format (13- or 16-sector, or both) and whether the disk is write protected. All `INFO` fields are required and are included in every `.woz` file.
+The `INFO` section shows information that emulators or other programs might need
+to know, such as the boot sector format (13- or 16-sector, or both) and whether
+the disk is write protected. All `INFO` fields are required and are included in
+every `.woz` file.
 
-The output of the `dump` command is designed to by grep-able, if you're into that kind of thing.
+The output of the `dump` command is designed to by grep-able, if you're into
+that kind of thing.
 
 ```
-$ wozardry dump "woz test images/WOZ 2.0/Wings of Fury - Disk 1, Side A.woz" | grep "^INFO"
+$ wozardry dump "WOZ 2.0/Wings of Fury - Disk 1, Side A.woz" | grep "^INFO"
 ```
 
 will show just the `INFO` section.
 
-**Tip**: [the .woz specification](https://applesaucefdc.com/woz/reference2/) lists the standard metadata fields and the acceptable values of all info fields.
+**Tip**: [the .woz specification](https://applesaucefdc.com/woz/reference2/)
+lists the standard metadata fields and the acceptable values of all info fields.
 
-## `edit` command
+### `edit` command
 
-This command lets you modify any information or metadata field in a `.woz` file. This is where the fun(\*) starts.
+This command lets you modify any information or metadata field in a `.woz`
+file. This is where the fun(\*) starts.
 
 (\*) not guaranteed, actual fun may vary
 
@@ -133,32 +175,36 @@ Tips:
  - Use "key:" with no value to delete a metadata field.
  - Keys are case-sensitive.
  - Some values have format restrictions; read the .woz specification.
- ```
- 
- Let's look at some examples.
- 
- Working with this same "Wings of Fury" disk image, let's give the game author his due by adding the `developer` metadata field:
- 
- ```
- $ wozardry edit -m "developer:Steve Waldo" "woz test images/WOZ 2.0/Wings of Fury - Disk 1, Side A.woz"
- ```
-
-Metadata fields are arbitrary; there is a standard set listed in [the .woz specification](https://applesaucefdc.com/woz/reference2/), but you can add your own.
-
-```
-$ wozardry edit -m "genre:action" -m "perspective:side view" "woz test images/WOZ 2.0/Wings of Fury - Disk 1, Side A.woz"
 ```
 
-You can use a similar syntax to remove metadata fields that don't apply to this disk.
+Let's look at some examples.
+
+Working with this same "Wings of Fury" disk image, let's give the game author
+his due by adding the `developer` metadata field:
 
 ```
-$ wozardry edit -m "version:" -m "notes:" -m "side_name:" -m "subtitle:" "woz test images/WOZ 2.0/Wings of Fury - Disk 1, Side A.woz"
+$ wozardry edit -m "developer:Steve Waldo" "WOZ 2.0/Wings of Fury - Disk 1, Side A.woz"
+```
+
+Metadata fields are arbitrary; there is a standard set listed in [the .woz
+specification](https://applesaucefdc.com/woz/reference2/), but you can add your
+own.
+
+```
+$ wozardry edit -m "genre:action" -m "perspective:side view" "WOZ 2.0/Wings of Fury - Disk 1, Side A.woz"
+```
+
+You can use a similar syntax to remove metadata fields that don't apply to this
+disk.
+
+```
+$ wozardry edit -m "version:" -m "notes:" -m "side_name:" -m "subtitle:" "WOZ 2.0/Wings of Fury - Disk 1, Side A.woz"
 ```
 
 Now let's look at that metadata section again:
 
 ```
-$ wozardry dump "woz test images/WOZ 2.0/Wings of Fury - Disk 1, Side A.woz" | grep "^META"
+$ wozardry dump "WOZ 2.0/Wings of Fury - Disk 1, Side A.woz" | grep "^META"
 META:  language:               English
 META:  publisher:              Broderbund
 META:  developer:              Steve Waldo
@@ -176,28 +222,43 @@ META:  genre:                  action
 META:  perspective:            side view
 ```
 
-You can modify `INFO` fields using a similar syntax (`-i` instead of `-m`), but be aware that `INFO` fields are highly constrained, and incorrect values can have noticeable effects in emulators. `wozardry` will reject any values that are nonsensical or out of range, but even in-range values can render the disk image unbootable. For example, the "optimal bit timing" field specifies the rate at which bits appear in the floppy drive data latch; if the rate is not what the disk's low-level RWTS code is expecting, the disk may be unable to read itself.
+You can modify `INFO` fields using a similar syntax (`-i` instead of `-m`), but
+be aware that `INFO` fields are highly constrained, and incorrect values can
+have noticeable effects in emulators. `wozardry` will reject any values that are
+nonsensical or out of range, but even in-range values can render the disk image
+unbootable. For example, the "optimal bit timing" field specifies the rate at
+which bits appear in the floppy drive data latch; if the rate is not what the
+disk's low-level RWTS code is expecting, the disk may be unable to read itself.
 
-Nonetheless, here are some examples of changing `INFO` fields. To tell emulators that a disk is not write-protected, set the `write_protected` field to `no`, `false`, or `0`.
+Nonetheless, here are some examples of changing `INFO` fields. To tell emulators
+that a disk is not write-protected, set the `write_protected` field to `no`,
+`false`, or `0`.
 
 ```
-$ wozardry edit -i "write_protected:no" "woz test images/WOZ 2.0/Wings of Fury - Disk 1, Side A.woz"
+$ wozardry edit -i "write_protected:no" "WOZ 2.0/Wings of Fury - Disk 1, Side A.woz"
 ```
 
-To tell emulators that the disk only runs on certain Apple II models, set the `compatible_hardware` field with a pipe-separated list. (Values may appear in any order. See `kRequiresMachine` in the `wozardry` source code for all the acceptable values.)
+To tell emulators that the disk only runs on certain Apple II models, set the
+`compatible_hardware` field with a pipe-separated list. (Values may appear in
+any order. See `kRequiresMachine` in the `wozardry` source code for all the
+acceptable values.)
 
 ```
-$ wozardry edit -i "compatible_hardware:2e|2e+|2c|2gs" "woz test images/WOZ 2.0/Wings of Fury - Disk 1, Side A.woz"
+$ wozardry edit -i "compatible_hardware:2e|2e+|2c|2gs" "WOZ 2.0/Wings of Fury - Disk 1, Side A.woz"
 ```
 
 ### How to convert WOZ1 to WOZ2 files
 
-As of this writing, the `.woz` specification has undergone one major revision, which changed the internal structure of a `.woz` file and added several new `INFO` fields. Both file formats use the `.woz` file extension; they are distinguished by magic bytes (`WOZ1` vs. `WOZ2`) within the file.
+As of this writing, the `.woz` specification has undergone one major revision,
+which changed the internal structure of a `.woz` file and added several new
+`INFO` fields. Both file formats use the `.woz` file extension; they are
+distinguished by magic bytes (`WOZ1` vs. `WOZ2`) within the file.
 
-Let's say you have an older `WOZ1` file, like this one from the `WOZ 1.0` directory of the official test images collection:
+Let's say you have an older `WOZ1` file, like this one from the `WOZ 1.0`
+directory of the official test images collection:
 
 ```
-$ wozardry dump "woz test images/WOZ 1.0/Wings of Fury - Disk 1, Side A.woz" | grep "^INFO"
+$ wozardry dump "WOZ 1.0/Wings of Fury - Disk 1, Side A.woz" | grep "^INFO"
 INFO:  File format version:    1
 INFO:  Disk type:              5.25-inch (140K)
 INFO:  Write protected:        yes
@@ -206,12 +267,13 @@ INFO:  Weakbits cleaned:       yes
 INFO:  Creator:                Applesauce v0.29
 ```
 
-The "file format version" confirms this is a `WOZ1` file. To convert it to a `WOZ2` file, set the `version` field to `2`.
+The "file format version" confirms this is a `WOZ1` file. To convert it to a
+`WOZ2` file, set the `version` field to `2`.
 
 ```
-$ wozardry -i "version:2" "woz test images/WOZ 1.0/Wings of Fury - Disk 1, Side A.woz"
+$ wozardry -i "version:2" "WOZ 1.0/Wings of Fury - Disk 1, Side A.woz"
 
-$ wozardry dump "woz test images/WOZ 1.0/Wings of Fury - Disk 1, Side A.woz" | grep "^INFO"
+$ wozardry dump "WOZ 1.0/Wings of Fury - Disk 1, Side A.woz" | grep "^INFO"
 INFO:  File format version:    2
 INFO:  Disk type:              5.25-inch (140K)
 INFO:  Write protected:        yes
@@ -225,14 +287,17 @@ INFO:  Required RAM:           unknown
 INFO:  Largest track:          13 blocks
 ```
 
-All the new (v2-specific) `INFO` fields are initialized with default values. Existing fields like the write-protected flag are retained. ("Largest track" is a calculated field and can not be set directly.)
+All the new (v2-specific) `INFO` fields are initialized with default
+values. Existing fields like the write-protected flag are retained. ("Largest
+track" is a calculated field and can not be set directly.)
 
-## `import` and `export` commands
+### `import` and `export` commands
 
-These commands allow you to access the information and metadata in a `.woz` file in `JSON` format.
+These commands allow you to access the information and metadata in a `.woz` file
+in `JSON` format.
 
 ```
-$ wozardry export "woz test images/WOZ 2.0/Wings of Fury - Disk 1, Side A.woz"
+$ wozardry export "WOZ 2.0/Wings of Fury - Disk 1, Side A.woz"
 {
   "woz": {
     "info": {
@@ -289,16 +354,106 @@ $ wozardry export "woz test images/WOZ 2.0/Wings of Fury - Disk 1, Side A.woz"
 }
 ```
 
-You can pipe the output of the `export` command to the `import` command to copy metadata from one `.woz` file to another.
+You can pipe the output of the `export` command to the `import` command to copy
+metadata from one `.woz` file to another.
 
 ```
 $ wozardry export game-side-a.woz | wozardry import game-side-b.woz
 ```
 
-Technically, this merges metadata. All metadata fields in `game-side-a.woz` will be copied to `game-side-b.woz`, overwriting any existing values for those fields. But if `game-side-b.woz` already had additional metadata fields that were not present in `game-side-a.woz`, those will be retained.
+Technically, this merges metadata. All metadata fields in `game-side-a.woz` will
+be copied to `game-side-b.woz`, overwriting any existing values for those
+fields. But if `game-side-b.woz` already had additional metadata fields that
+were not present in `game-side-a.woz`, those will be retained.
 
-**Tip**: [a2rchery](https://github.com/a2-4am/a2rchery) is a tool to manipulate `.a2r` flux images. These `.a2r` files can also have embedded metadata, just like `.woz` files. And guess what! `a2rchery` also has `import` and `export` commands, just like `wozardry`. You see where this is going.
+**Tip**: [a2rchery](https://github.com/a2-4am/a2rchery) is a tool to manipulate
+`.a2r` flux images. These `.a2r` files can also have embedded metadata, just
+like `.woz` files. And guess what! `a2rchery` also has `import` and `export`
+commands, just like `wozardry`. You see where this is going.
 
 ```
 $ wozardry export game.woz | a2rchery import game.a2r
+```
+
+### `remove` command
+
+This command allow you to remove one or more tracks from a `.woz` disk image.
+
+Tracks are specified in quarter tracks, in base 10 (not base 16). Multiple
+tracks can be removed at once.
+
+```
+$ wozardry remove -t0.25 -t0.5 -t0.75 -t1 -t1.25 -t35 "Gamma Goblins.woz"
+```
+
+**Note**: tracks are stored as indices in the `TMAP` chunk, and multiple tracks
+can refer to the same bitstream (stored in the `TRKS` chunk). If you remove all
+tracks that refer to a bitstream, the bitstream will be removed from the `TRKS`
+chunk and all the indices in the `TMAP` chunk will be adjusted accordingly.
+
+## Python interface
+
+### `WozDiskImage`
+
+This represents a single WOZ disk image. You can create it from scratch, load it
+from a file on disk, or parse it from a bytestream in memory.
+
+```
+>>> import wozardry
+>>> woz_image = wozardry.WozDiskImage()
+>>> woz_image.woz_version
+2
+```
+
+This newly created `woz_image` already has an `info` dictionary with all the
+required fields in the `INFO` chunk.
+
+```
+>>> from pprint import pprint
+>>> pprint(woz_image.info)
+OrderedDict([('version', 2),
+             ('disk_type', 1),
+             ('write_protected', False),
+             ('synchronized', False),
+             ('cleaned', False),
+             ('creator', 'wozardry 2.0-beta'),
+             ('disk_sides', 1),
+             ('boot_sector_format', 0),
+             ('optimal_bit_timing', 32),
+             ('compatible_hardware', []),
+             ('required_ram', 0)])
+>>> woz_image.info["compatible_hardware"] = ["2", "2+"]
+>>> woz_image.info["compatible_hardware"]
+['2', '2+']
+```
+
+It also has an empty `meta` dictionary for metadata.
+
+```
+>>> pprint(woz_image.meta)
+OrderedDict()
+>>> woz_image.meta["copyright"] = "1981"
+>>> woz_image.meta["developer"] = "Chuckles"
+>>> pprint(woz_image.meta)
+OrderedDict([('copyright', '1981'),
+             ('developer', 'Chuckles')])
+```
+
+### Loading and saving files on disk
+
+To load a `.woz` disk image from a file (or any file-like object), open the file
+and pass it to the `WozDiskImage` constructor. Be sure to open files in binary
+mode.
+
+```
+>>> with open("Wings of Fury.woz", "rb") as fp:
+...     w = wozardry.WozDiskImage(fp)
+```
+
+To save a file, serialize the `WozDiskImage` object with the `bytes()` method
+and write that to disk. Be sure to open files in binary mode.
+
+```
+>>> with open("Wings of Fury.woz", "wb") as fp:
+...     fp.write(bytes(w))
 ```

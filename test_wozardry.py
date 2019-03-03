@@ -33,223 +33,309 @@ def bfh(s):
 def test_parse_header():
     # incomplete header
     with pytest.raises(wozardry.WozEOFError):
-        wozardry.WozReader(stream=bfh("57 4F 5A 32"))
+        wozardry.WozDiskImage(bfh("57 4F 5A 32"))
 
     with pytest.raises(wozardry.WozEOFError):
-        wozardry.WozReader(stream=bfh("57 4F 5A 32 FF 0A 0D"))
+        wozardry.WozDiskImage(bfh("57 4F 5A 32 FF 0A 0D"))
 
     with pytest.raises(wozardry.WozEOFError):
-        wozardry.WozReader(stream=bfh("57 4F 5A 32 FF 0A 0D 0A 00 00 00"))
+        wozardry.WozDiskImage(bfh("57 4F 5A 32 FF 0A 0D 0A 00 00 00"))
 
     # invalid signature at offset 0
     with pytest.raises(wozardry.WozHeaderError_NoWOZMarker):
-        wozardry.WozReader(stream=bfh("57 4F 5A 30 00 00 00 00"))
+        wozardry.WozDiskImage(bfh("57 4F 5A 30 00 00 00 00"))
 
     # invalid signature at offset 0
     with pytest.raises(wozardry.WozHeaderError_NoWOZMarker):
-        wozardry.WozReader(stream=bfh("57 4F 5A 33 00 00 00 00"))
+        wozardry.WozDiskImage(bfh("57 4F 5A 33 00 00 00 00"))
 
     # missing FF byte at offset 4
     with pytest.raises(wozardry.WozHeaderError_NoFF):
-        wozardry.WozReader(stream=bfh("57 4F 5A 32 00 0A 0D 0A"))
+        wozardry.WozDiskImage(bfh("57 4F 5A 32 00 0A 0D 0A"))
 
     # missing 0A byte at offset 5
     with pytest.raises(wozardry.WozHeaderError_NoLF):
-        wozardry.WozReader(stream=bfh("57 4F 5A 32 FF 0D 0D 0D"))
+        wozardry.WozDiskImage(bfh("57 4F 5A 32 FF 0D 0D 0D"))
 
     # missing 0D byte at offset 6
     with pytest.raises(wozardry.WozHeaderError_NoLF):
-        wozardry.WozReader(stream=bfh("57 4F 5A 32 FF 0A 0A 0A"))
+        wozardry.WozDiskImage(bfh("57 4F 5A 32 FF 0A 0A 0A"))
 
     # missing 0A byte at offset 7
     with pytest.raises(wozardry.WozHeaderError_NoLF):
-        wozardry.WozReader(stream=bfh("57 4F 5A 32 FF 0A 0D 0D"))
+        wozardry.WozDiskImage(bfh("57 4F 5A 32 FF 0A 0D 0D"))
 
 def test_parse_info():
     # TMAP chunk before INFO chunk
     with pytest.raises(wozardry.WozINFOFormatError_MissingINFOChunk):
-        wozardry.WozReader(stream=bfh(kHeader2 + "54 4D 41 50 A0 00 00 00 " + "FF "*160))
+        wozardry.WozDiskImage(bfh(kHeader2 + "54 4D 41 50 A0 00 00 00 " + "FF "*160))
 
     # wrong INFO chunk size (too small)
     with pytest.raises(wozardry.WozINFOFormatError):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3B 00 00 00 " + "00 "*59))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3B 00 00 00 " + "00 "*59))
 
     # wrong INFO chunk size (too big)
     with pytest.raises(wozardry.WozINFOFormatError):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3D 00 00 00 " + "00 "*61))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3D 00 00 00 " + "00 "*61))
 
     # invalid version (0) in a WOZ1 file
     with pytest.raises(wozardry.WozINFOFormatError_BadVersion):
-        wozardry.WozReader(stream=bfh(kHeader1 + "49 4E 46 4F 3C 00 00 00 00" + "00 "*59))
+        wozardry.WozDiskImage(bfh(kHeader1 + "49 4E 46 4F 3C 00 00 00 00" + "00 "*59))
 
     # invalid version (0) in a WOZ2 file
     with pytest.raises(wozardry.WozINFOFormatError_BadVersion):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 00" + "00 "*59))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 00" + "00 "*59))
 
     # invalid version (1) in a WOZ2 file
     with pytest.raises(wozardry.WozINFOFormatError_BadVersion):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 01" + "00 "*59))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 01" + "00 "*59))
 
     # invalid version (2) in a WOZ1 file
     with pytest.raises(wozardry.WozINFOFormatError_BadVersion):
-        wozardry.WozReader(stream=bfh(kHeader1 + "49 4E 46 4F 3C 00 00 00 02" + "00 "*59))
+        wozardry.WozDiskImage(bfh(kHeader1 + "49 4E 46 4F 3C 00 00 00 02" + "00 "*59))
 
     # invalid disk type (0) in a WOZ1 file
     with pytest.raises(wozardry.WozINFOFormatError_BadDiskType):
-        wozardry.WozReader(stream=bfh(kHeader1 + "49 4E 46 4F 3C 00 00 00 01 00 " + "00 "*58))
+        wozardry.WozDiskImage(bfh(kHeader1 + "49 4E 46 4F 3C 00 00 00 01 00 " + "00 "*58))
 
     # invalid disk type (0) in a WOZ2 file
     with pytest.raises(wozardry.WozINFOFormatError_BadDiskType):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 00 " + "00 "*58))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 00 " + "00 "*58))
 
     # invalid disk type (3) in a WOZ1 file
     with pytest.raises(wozardry.WozINFOFormatError_BadDiskType):
-        wozardry.WozReader(stream=bfh(kHeader1 + "49 4E 46 4F 3C 00 00 00 01 03 " + "00 "*58))
+        wozardry.WozDiskImage(bfh(kHeader1 + "49 4E 46 4F 3C 00 00 00 01 03 " + "00 "*58))
 
     # invalid disk type (3) in a WOZ2 file
     with pytest.raises(wozardry.WozINFOFormatError_BadDiskType):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 03 " + "00 "*58))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 03 " + "00 "*58))
 
     # invalid write protected flag (2) in a WOZ1 file
     with pytest.raises(wozardry.WozINFOFormatError_BadWriteProtected):
-        wozardry.WozReader(stream=bfh(kHeader1 + "49 4E 46 4F 3C 00 00 00 01 01 02 " + "00 "*57))
+        wozardry.WozDiskImage(bfh(kHeader1 + "49 4E 46 4F 3C 00 00 00 01 01 02 " + "00 "*57))
 
     # invalid write protected flag (2) in a WOZ2 file
     with pytest.raises(wozardry.WozINFOFormatError_BadWriteProtected):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 02 " + "00 "*57))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 02 " + "00 "*57))
 
     # invalid synchronized flag (2) in a WOZ1 file
     with pytest.raises(wozardry.WozINFOFormatError_BadSynchronized):
-        wozardry.WozReader(stream=bfh(kHeader1 + "49 4E 46 4F 3C 00 00 00 01 01 00 02 " + "00 "*56))
+        wozardry.WozDiskImage(bfh(kHeader1 + "49 4E 46 4F 3C 00 00 00 01 01 00 02 " + "00 "*56))
 
     # invalid synchronized flag (2) in a WOZ2 file
     with pytest.raises(wozardry.WozINFOFormatError_BadSynchronized):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 02 " + "00 "*56))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 02 " + "00 "*56))
 
     # invalid cleaned flag (2) in a WOZ1 file
     with pytest.raises(wozardry.WozINFOFormatError_BadCleaned):
-        wozardry.WozReader(stream=bfh(kHeader1 + "49 4E 46 4F 3C 00 00 00 01 01 00 00 02 " + "00 "*55))
+        wozardry.WozDiskImage(bfh(kHeader1 + "49 4E 46 4F 3C 00 00 00 01 01 00 00 02 " + "00 "*55))
 
     # invalid cleaned flag (2) in a WOZ2 file
     with pytest.raises(wozardry.WozINFOFormatError_BadCleaned):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 02 " + "00 "*55))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 02 " + "00 "*55))
 
     # invalid creator (bad UTF-8 bytes) in a WOZ1 file
     with pytest.raises(wozardry.WozINFOFormatError_BadCreator):
-        wozardry.WozReader(stream=bfh(kHeader1 + "49 4E 46 4F 3C 00 00 00 01 01 00 00 00 E0 80 80 " + "00 "*52))
+        wozardry.WozDiskImage(bfh(kHeader1 + "49 4E 46 4F 3C 00 00 00 01 01 00 00 00 E0 80 80 " + "00 "*52))
 
     # invalid creator (bad UTF-8 bytes) in a WOZ2 file
     with pytest.raises(wozardry.WozINFOFormatError_BadCreator):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 E0 80 80 " + "00 "*52))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 E0 80 80 " + "00 "*52))
 
     # invalid disk sides (0) in a WOZ2 file
     with pytest.raises(wozardry.WozINFOFormatError_BadDiskSides):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "00 " + "00 "*22))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "00 " + "00 "*22))
 
     # invalid disk sides (3) in a WOZ2 file
     with pytest.raises(wozardry.WozINFOFormatError_BadDiskSides):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "03 " + "00 "*22))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "03 " + "00 "*22))
 
     # invalid disk sides (2, when disk type = 1) in a WOZ2 file
     with pytest.raises(wozardry.WozINFOFormatError_BadDiskSides):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "02 " + "00 "*22))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "02 " + "00 "*22))
 
     # invalid boot sector format (4) in a WOZ2 file
     with pytest.raises(wozardry.WozINFOFormatError_BadBootSectorFormat):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 04 " + "00 "*21))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 04 " + "00 "*21))
 
     # invalid boot sector format (1, when disk type = 2) in a WOZ2 file
     with pytest.raises(wozardry.WozINFOFormatError_BadBootSectorFormat):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 02 00 00 00 " + "20 "*32 + "01 01 " + "00 "*21))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 02 00 00 00 " + "20 "*32 + "01 01 " + "00 "*21))
 
     # invalid boot sector format (2, when disk type = 2) in a WOZ2 file
     with pytest.raises(wozardry.WozINFOFormatError_BadBootSectorFormat):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 02 00 00 00 " + "20 "*32 + "01 02 " + "00 "*21))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 02 00 00 00 " + "20 "*32 + "01 02 " + "00 "*21))
 
     # invalid boot sector format (3, when disk type = 2) in a WOZ2 file
     with pytest.raises(wozardry.WozINFOFormatError_BadBootSectorFormat):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 02 00 00 00 " + "20 "*32 + "01 02 " + "00 "*21))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 02 00 00 00 " + "20 "*32 + "01 02 " + "00 "*21))
 
     # invalid optimal bit timing (23, when disk type = 1) in a WOZ2 file
     with pytest.raises(wozardry.WozINFOFormatError_BadOptimalBitTiming):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 00 17 " + "00 "*20))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 00 17 " + "00 "*20))
 
     # invalid optimal bit timing (41, when disk type = 1) in a WOZ2 file
     with pytest.raises(wozardry.WozINFOFormatError_BadOptimalBitTiming):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 00 29 " + "00 "*20))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 00 29 " + "00 "*20))
 
     # invalid optimal bit timing (7, when disk type = 2) in a WOZ2 file
     with pytest.raises(wozardry.WozINFOFormatError_BadOptimalBitTiming):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 02 00 00 00 " + "20 "*32 + "01 00 07 " + "00 "*20))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 02 00 00 00 " + "20 "*32 + "01 00 07 " + "00 "*20))
 
     # invalid optimal bit timing (25, when disk type = 2) in a WOZ2 file
     with pytest.raises(wozardry.WozINFOFormatError_BadOptimalBitTiming):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 02 00 00 00 " + "20 "*32 + "01 00 19 " + "00 "*20))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 02 00 00 00 " + "20 "*32 + "01 00 19 " + "00 "*20))
 
     # invalid optimal bit timing (0, when disk type = 1) in a WOZ2 file
     # unlike other fields, this does not allow a 0 value to mean "unknown"
     with pytest.raises(wozardry.WozINFOFormatError_BadOptimalBitTiming):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 00 00 " + "00 "*20))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 00 00 " + "00 "*20))
 
     # invalid optimal bit timing (0, when disk type = 2) in a WOZ2 file
     # unlike other fields, this does not allow a 0 value to mean "unknown"
     with pytest.raises(wozardry.WozINFOFormatError_BadOptimalBitTiming):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 02 00 00 00 " + "20 "*32 + "01 00 00 " + "00 "*20))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 02 00 00 00 " + "20 "*32 + "01 00 00 " + "00 "*20))
 
     # invalid compatible hardware (00000010 00000000) in a WOZ2 file
     # this field only uses the lower 9 bits (for 9 hardware models), so the 7 high bits must all be 0
     with pytest.raises(wozardry.WozINFOFormatError_BadCompatibleHardware):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 00 20 00 02 " + "00 "*18))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 00 20 00 02 " + "00 "*18))
 
     # invalid compatible hardware (00000100 00000000) in a WOZ2 file
     with pytest.raises(wozardry.WozINFOFormatError_BadCompatibleHardware):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 00 20 00 04 " + "00 "*18))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 00 20 00 04 " + "00 "*18))
 
     # invalid compatible hardware (00001000 00000000) in a WOZ2 file
     with pytest.raises(wozardry.WozINFOFormatError_BadCompatibleHardware):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 00 20 00 08 " + "00 "*18))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 00 20 00 08 " + "00 "*18))
 
     # invalid compatible hardware (00010000 00000000) in a WOZ2 file
     with pytest.raises(wozardry.WozINFOFormatError_BadCompatibleHardware):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 00 20 00 10 " + "00 "*18))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 00 20 00 10 " + "00 "*18))
 
     # invalid compatible hardware (00100000 00000000) in a WOZ2 file
     with pytest.raises(wozardry.WozINFOFormatError_BadCompatibleHardware):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 00 20 00 20 " + "00 "*18))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 00 20 00 20 " + "00 "*18))
 
     # invalid compatible hardware (01000000 00000000) in a WOZ2 file
     with pytest.raises(wozardry.WozINFOFormatError_BadCompatibleHardware):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 00 20 00 40 " + "00 "*18))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 00 20 00 40 " + "00 "*18))
 
     # invalid compatible hardware (10000000 00000000) in a WOZ2 file
     with pytest.raises(wozardry.WozINFOFormatError_BadCompatibleHardware):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 00 20 00 80 " + "00 "*18))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 00 20 00 80 " + "00 "*18))
 
 def test_parse_tmap():
     # missing TMAP chunk
     with pytest.raises(wozardry.WozTMAPFormatError_MissingTMAPChunk):
-        wozardry.WozReader(stream=bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 00 20 00 00 " + "00 "*18))
+        wozardry.WozDiskImage(bfh(kHeader2 + "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 00 20 00 00 " + "00 "*18))
 
     # TRKS chunk before TMAP chunk
     with pytest.raises(wozardry.WozTMAPFormatError_MissingTMAPChunk):
-        wozardry.WozReader(
-            stream=bfh(
+        wozardry.WozDiskImage(
+            bfh(
                 kHeader2 + \
                 "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 00 20 00 00 " + "00 "*18 + \
                 "54 52 4B 53 00 00 00 00 "))
 
     # TMAP points to non-existent TRK in TRKS chunk
     with pytest.raises(wozardry.WozTMAPFormatError_BadTRKS):
-        wozardry.WozReader(
-            stream=bfh(
+        wozardry.WozDiskImage(
+            bfh(
                 kHeader2 + \
                 "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 00 20 00 00 " + "00 "*18 + \
                 "54 4D 41 50 A0 00 00 00 00 " + "FF "*159 + \
                 "54 52 4B 53 00 00 00 00 "))
 
-def test_parse_meta():
-    
+def test_parse_trks():
+    # this constitutes a valid WOZ2 file header, valid INFO chunk,
+    # valid TMAP chunk with 1 entry pointing to TRK 0 in TRKS chunk,
+    # and the 4-byte TRKS chunk ID
+    prefix = kHeader2 + \
+        "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 00 20 00 00 " + "00 "*18 + \
+        "54 4D 41 50 A0 00 00 00 00 " + "FF "*159 + \
+        "54 52 4B 53 "
 
+    # invalid TRKS chunk with 1 TRK entry whose starting block = 1 (must be 3+)
+    with pytest.raises(wozardry.WozTRKSFormatError_BadStartingBlock):
+        wozardry.WozDiskImage(bfh(prefix + "00 05 00 00 01 00 01 00 01 00 00 00  " + "00 "*1272))
+
+    # invalid TRKS chunk with 1 TRK entry whose starting block = 2 (must be 3+)
+    with pytest.raises(wozardry.WozTRKSFormatError_BadStartingBlock):
+        wozardry.WozDiskImage(bfh(prefix + "00 05 00 00 02 00 01 00 01 00 00 00  " + "00 "*1272))
+
+    # invalid TRKS chunk with 1 TRK entry whose block count = 1 but has no BITS data for the block
+    with pytest.raises(wozardry.WozTRKSFormatError_BadStartingBlock):
+        wozardry.WozDiskImage(bfh(prefix + "00 05 00 00 03 00 01 00 01 00 00 00  " + "FF "*1272))
+
+    # invalid TRKS chunk with 1 TRK entry whose block count = 1 but has only partial BITS data for the block
+    with pytest.raises(wozardry.WozTRKSFormatError_BadBlockCount):
+        wozardry.WozDiskImage(bfh(prefix + "FF 06 00 00 03 00 01 00 01 00 00 00  " + "00 "*1272 + "FF "*511))
+
+def test_parse_meta():
+    def build_meta_chunk(key, value):
+        """|key| and |value| are strings, returns string of hex bytes to feed into bfh()"""
+        bkey = key.encode("utf-8")
+        bvalue = value.encode("utf-8")
+        return (wozardry.to_uint32(len(bkey) + len(bvalue) + 2) + bkey + b'\x09' + bvalue + b'\x0A').hex()
+
+    # this constitutes a valid WOZ2 header, valid INFO chunk,
+    # valid TMAP chunk with 0 entries, and the 4-byte META chunk ID
+    prefix = kHeader2 + \
+        "49 4E 46 4F 3C 00 00 00 02 01 00 00 00 " + "20 "*32 + "01 00 20 00 00 " + "00 "*18 + \
+        "54 4D 41 50 A0 00 00 00 " + "FF "*160 + \
+        "4D 45 54 41 "
+
+    # valid META chunk with 0 length
+    wozardry.WozDiskImage(bfh(prefix + "00 00 00 00 "))
+
+    # invalid UTF-8
+    with pytest.raises(wozardry.WozMETAFormatError_EncodingError):
+        wozardry.WozDiskImage(bfh(prefix + "03 00 00 00 E0 80 80"))
+
+    # valid language values
+    for lang in wozardry.kLanguages:
+        wozardry.WozDiskImage(bfh(prefix + build_meta_chunk("language", lang)))
+
+    # invalid language value
+    with pytest.raises(wozardry.WozMETAFormatError_BadLanguage):
+        wozardry.WozDiskImage(bfh(prefix + build_meta_chunk("language", "Englush")))
+
+    # valid requires_ram values
+    for ram in wozardry.kRequiresRAM:
+        wozardry.WozDiskImage(bfh(prefix + build_meta_chunk("requires_ram", ram)))
+
+    # invalid requires_ram value
+    with pytest.raises(wozardry.WozMETAFormatError_BadRAM):
+        wozardry.WozDiskImage(bfh(prefix + build_meta_chunk("requires_ram", "0")))
+
+    # valid requires_machine values
+    for machine in wozardry.kRequiresMachine:
+        wozardry.WozDiskImage(bfh(prefix + build_meta_chunk("requires_machine", machine)))
+
+    # invalid requires_machine value
+    with pytest.raises(wozardry.WozMETAFormatError_BadMachine):
+        wozardry.WozDiskImage(bfh(prefix + build_meta_chunk("requires_machine", "4")))
+
+    # invalid format (duplicate key)
+    bk = "language".encode("utf-8")
+    bv = "English".encode("utf-8")
+    chunk = bk + b"\x09" + bv + b"\x0A" + bk + b"\x09" + bv + b"\0x0A"
+    chunk = (wozardry.to_uint32(len(chunk)) + chunk).hex()
+    with pytest.raises(wozardry.WozMETAFormatError_DuplicateKey):
+        wozardry.WozDiskImage(bfh(prefix + chunk))
+
+    # invalid format (no tab separator between key an dvalue)
+    chunk = bk + bv + b"\x0A"
+    chunk = (wozardry.to_uint32(len(chunk)) + chunk).hex()
+    with pytest.raises(wozardry.WozMETAFormatError_NotEnoughTabs):
+        wozardry.WozDiskImage(bfh(prefix + chunk))
+
+    # invalid format (too many tabs between key and value)
+    chunk = bk + b"\x09"*2 + bv + b"\x0A"
+    chunk = (wozardry.to_uint32(len(chunk)) + chunk).hex()
+    with pytest.raises(wozardry.WozMETAFormatError_TooManyTabs):
+        wozardry.WozDiskImage(bfh(prefix + chunk))
 
 #----- test command-line interface -----
 
@@ -291,7 +377,8 @@ def test_command_edit_info_version_1_to_2():
         shutil.copy(kValid1, tmp.name)
 
         wozardry.parse_args(["edit", "-i", "version:2", tmp.name])
-        woz = wozardry.WozReader(tmp.name)
+        with open(tmp.name, "rb") as tmpstream:
+            woz = wozardry.WozDiskImage(tmpstream)
         assert woz.woz_version == 2
         assert woz.info["version"] == 2
         assert woz.info["boot_sector_format"] == 0
@@ -308,12 +395,14 @@ def test_command_edit_info_disk_type():
 
             # disk_type = 1 is ok
             wozardry.parse_args(["edit", "-i", "disk_type:1", tmp.name])
-            woz = wozardry.WozReader(tmp.name)
+            with open(tmp.name, "rb") as tmpstream:
+                woz = wozardry.WozDiskImage(tmpstream)
             assert woz.info["disk_type"] == 1
 
             # disk_type = 2 is ok
             wozardry.parse_args(["edit", "-i", "disk_type:2", tmp.name])
-            woz = wozardry.WozReader(tmp.name)
+            with open(tmp.name, "rb") as tmpstream:
+                woz = wozardry.WozDiskImage(tmpstream)
             assert woz.info["disk_type"] == 2
 
             # disk_type = 0 is not ok
@@ -332,7 +421,8 @@ def test_command_edit_info_changing_disk_type_resets_optimal_bit_timing():
     with tempfile.NamedTemporaryFile() as tmp:
         shutil.copy(kValid2, tmp.name)
         wozardry.parse_args(["edit", "-i", "disk_type:2", tmp.name])
-        woz = wozardry.WozReader(tmp.name)
+        with open(tmp.name, "rb") as tmpstream:
+            woz = wozardry.WozDiskImage(tmpstream)
         assert woz.info["optimal_bit_timing"] == wozardry.kDefaultBitTiming[2]
 
 def test_command_edit_info_boolean_flags():
@@ -348,10 +438,12 @@ def test_command_edit_info_boolean_flags():
                                                 ("true", "false"),
                                                 ("tRuE", "FaLsE")):
                     wozardry.parse_args(["edit", "-i", "%s:%s" % (flag, true_value), tmp.name])
-                    woz = wozardry.WozReader(tmp.name)
+                    with open(tmp.name, "rb") as tmpstream:
+                        woz = wozardry.WozDiskImage(tmpstream)
                     assert woz.info[flag] == True
                     wozardry.parse_args(["edit", "-i", "%s:%s" % (flag, false_value), tmp.name])
-                    woz = wozardry.WozReader(tmp.name)
+                    with open(tmp.name, "rb") as tmpstream:
+                        woz = wozardry.WozDiskImage(tmpstream)
                     assert woz.info[flag] == False
     f(kValid1)
     f(kValid2)
@@ -362,7 +454,8 @@ def test_command_edit_disk_sides():
         shutil.copy(kValid2, tmp.name)
 
         # this file is a 5.25-inch disk image
-        woz = wozardry.WozReader(tmp.name)
+        with open(tmp.name, "rb") as tmpstream:
+            woz = wozardry.WozDiskImage(tmpstream)
         assert woz.info["disk_type"] == 1
         assert woz.info["disk_sides"] == 1
 
@@ -372,15 +465,18 @@ def test_command_edit_disk_sides():
 
         # now change it to a 3.5-inch disk image
         wozardry.parse_args(["edit", "-i", "disk_type:2", tmp.name])
-        woz = wozardry.WozReader(tmp.name)
+        with open(tmp.name, "rb") as tmpstream:
+            woz = wozardry.WozDiskImage(tmpstream)
         assert woz.info["disk_type"] == 2
 
         # 3.5-inch disk images can be 1- or 2-sided
         wozardry.parse_args(["edit", "-i", "disk_sides:2", tmp.name])
-        woz = wozardry.WozReader(tmp.name)
+        with open(tmp.name, "rb") as tmpstream:
+            woz = wozardry.WozDiskImage(tmpstream)
         assert woz.info["disk_sides"] == 2
         wozardry.parse_args(["edit", "-i", "disk_sides:1", tmp.name])
-        woz = wozardry.WozReader(tmp.name)
+        with open(tmp.name, "rb") as tmpstream:
+            woz = wozardry.WozDiskImage(tmpstream)
         assert woz.info["disk_sides"] == 1
 
         # ...but not 3-sided, that's silly
@@ -395,7 +491,8 @@ def test_command_edit_language():
 
             for lang in wozardry.kLanguages:
                 wozardry.parse_args(["edit", "-m", "language:%s" % lang, tmp.name])
-                woz = wozardry.WozReader(tmp.name)
+                with open(tmp.name, "rb") as tmpstream:
+                    woz = wozardry.WozDiskImage(tmpstream)
                 assert woz.meta["language"] == lang
     f(kValid1)
     f(kValid2)
@@ -408,7 +505,8 @@ def test_command_edit_requires_ram():
 
             for ram in wozardry.kRequiresRAM:
                 wozardry.parse_args(["edit", "-m", "requires_ram:%s" % ram, tmp.name])
-                woz = wozardry.WozReader(tmp.name)
+                with open(tmp.name, "rb") as tmpstream:
+                    woz = wozardry.WozDiskImage(tmpstream)
                 assert woz.meta["requires_ram"] == ram
 
             # invalid required RAM (must be one of enumerated values)
@@ -426,7 +524,8 @@ def test_command_edit_requires_machine():
 
             for model in wozardry.kRequiresMachine:
                 wozardry.parse_args(["edit", "-m", "requires_machine:%s" % model, tmp.name])
-                woz = wozardry.WozReader(tmp.name)
+                with open(tmp.name, "rb") as tmpstream:
+                    woz = wozardry.WozDiskImage(tmpstream)
                 assert woz.meta["requires_machine"] == model
 
             # invalid machine (Apple IV)

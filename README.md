@@ -271,7 +271,7 @@ The "file format version" confirms this is a `WOZ1` file. To convert it to a
 `WOZ2` file, set the `version` field to `2`.
 
 ```
-$ wozardry -i "version:2" "WOZ 1.0/Wings of Fury - Disk 1, Side A.woz"
+$ wozardry edit -i "version:2" "WOZ 1.0/Wings of Fury - Disk 1, Side A.woz"
 
 $ wozardry dump "WOZ 1.0/Wings of Fury - Disk 1, Side A.woz" | grep "^INFO"
 INFO:  File format version:    2
@@ -447,7 +447,7 @@ mode.
 
 ```
 >>> with open("Wings of Fury.woz", "rb") as fp:
-...     w = wozardry.WozDiskImage(fp)
+...     woz_image = wozardry.WozDiskImage(fp)
 ```
 
 To save a file, serialize the `WozDiskImage` object with the `bytes()` method
@@ -455,5 +455,5 @@ and write that to disk. Be sure to open files in binary mode.
 
 ```
 >>> with open("Wings of Fury.woz", "wb") as fp:
-...     fp.write(bytes(w))
+...     fp.write(bytes(woz_image))
 ```

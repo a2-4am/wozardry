@@ -15,8 +15,9 @@ and can convert files from one version to the other.
   * [`import` and `export` commands](#import-and-export-commands)
   * [`remove` command](#remove-command)
 * [Python interface](#python-interface)
-  * [`WozDiskImage`](#wozdiskimage)
-  * [Loading and saving files on disk](#loading-and-saving-files-on-disk)
+  * [`WozDiskImage` interface](#wozdiskimage-interface)
+  * [How to load and save files on disk](#how-to-load-and-save-files-on-disk)
+  * [`Track` interface](#track-interface)
 
 ## Installation
 
@@ -393,7 +394,7 @@ chunk and all the indices in the `TMAP` chunk will be adjusted accordingly.
 
 ## Python interface
 
-### `WozDiskImage`
+### `WozDiskImage` interface
 
 This represents a single WOZ disk image. You can create it from scratch, load it
 from a file on disk, or parse it from a bytestream in memory.
@@ -439,7 +440,7 @@ OrderedDict([('copyright', '1981'),
              ('developer', 'Chuckles')])
 ```
 
-### Loading and saving files on disk
+### How to load and save files on disk
 
 To load a `.woz` disk image from a file (or any file-like object), open the file
 and pass it to the `WozDiskImage` constructor. Be sure to open files in binary
@@ -456,4 +457,96 @@ and write that to disk. Be sure to open files in binary mode.
 ```
 >>> with open("Wings of Fury.woz", "wb") as fp:
 ...     fp.write(bytes(woz_image))
+```
+
+### `Track` interface
+
+A `.woz` disk image usually contains multiple tracks of data, otherwise what's
+the point, right? Each track is accessed by the `Track` interface.
+
+The `WozDiskImage.seek()` returns a `Track` object that contains that track's
+data (or `None` if that track is not in the disk image).
+
+**Tip**: the `seek()` method takes a logical track number, which could be a
+quarter track or half track. To get the data on track 1.5, call `seek(1.5)`.
+
+In this example, we load a `.woz` image from disk and seek to track 0:
+
+```
+>>> with open("Wings of Fury.woz", "rb") as fp:
+...     woz_image = wozardry.WozDiskImage(fp)
+>>> tr = woz_image.seek(0)
+>>> tr
+<wozardry.Track object at 0x108ccf3c8>
+```
+
+Now we can access the bitstream of the track. The raw bitstream is in `tr.bits`,
+but you probably want to use one of these convenience methods instead.
+
+To search the track for a specific nibble sequence, use the `find()` method. It
+returns `True` if the nibble sequence was found, or `False` otherwise.
+
+```
+>>> tr.find(bytes.fromhex("D5 AA 96"))
+True
+```
+
+The `Track` object maintains state of where it is within the bitstream
+(`tr.bit_index`), including wrapping around to the beginning if it reaches the
+end (`tr.revolutions`). After finding that `D5 AA 96` nibble sequence with the
+`find()` method, we can read the next nibbles in the bitstream with the
+`nibble()` generator.
+
+```
+>>> hex(next(tr.nibble()))
+'0xff'
+>>> hex(next(tr.nibble()))
+'0xfe'
+>>> hex(next(tr.nibble()))
+'0xaa'
+>>> hex(next(tr.nibble()))
+'0xaa'
+>>> hex(next(tr.nibble()))
+'0xab'
+>>> hex(next(tr.nibble()))
+'0xaa'
+```
+
+**Tip**: the `nibble()` generator returns nibbles like a real disk controller.
+`0` bits between nibbles are ignored, so the high bit of the returned nibble is
+always `1`. The `find()` method uses the `nibble()` generator internally, so it
+also ignores `0` bits between nibbles.
+
+If you want to read individual bits from the current position in the bitstream,
+use the `bit()` generator.
+
+```
+>>> next(tr.bit())
+1
+>>> next(tr.bit())
+1
+>>> next(tr.bit())
+1
+>>> next(tr.bit())
+1
+>>> next(tr.bit())
+1
+>>> next(tr.bit())
+1
+>>> next(tr.bit())
+1
+>>> next(tr.bit())
+0
+```
+
+Unlike a real disk controller, you can move backwards in the bitstream, allowing
+you to speculatively look at bits then rewind as if you hadn't seen them yet.
+
+Let's rewind as if we hadn't just read those 8 individual bits, then read them
+as a nibble:
+
+```
+>>> tr.rewind(8)
+>>> hex(next(tr.nibble()))
+'0xfe'
 ```

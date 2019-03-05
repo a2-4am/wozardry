@@ -13,8 +13,8 @@ import itertools
 import os
 import sys
 
-__version__ = "2.0-beta" # https://semver.org
-__date__ = "2019-03-02"
+__version__ = "2.0" # https://semver.org
+__date__ = "2019-03-04"
 __progname__ = "wozardry"
 __displayname__ = __progname__ + " " + __version__ + " by 4am (" + __date__ + ")"
 

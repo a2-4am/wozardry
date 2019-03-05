@@ -57,8 +57,8 @@ The `verify` command does not "read" the data on the disk like an emulator
 would. It merely verifies the structure of the `.woz` file itself and applies a
 few sanity checks on the embedded metadata (if any). The disk may or may not
 boot in an emulator. It may not pass its own copy protection checks. It may not
-have the data you expected, or any data at all. `wozardry` can't answer those
-questions.
+have the data you expected, or any data at all. The `verify` command can not
+answer those questions.
 
 ### `dump` command
 

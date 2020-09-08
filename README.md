@@ -394,6 +394,12 @@ chunk and all the indices in the `TMAP` chunk will be adjusted accordingly.
 
 ## Python interface
 
+Start the python REPL with:
+
+```
+py
+```
+
 ### `WozDiskImage` interface
 
 This represents a single WOZ disk image. You can create it from scratch, load it

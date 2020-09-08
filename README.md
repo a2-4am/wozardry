@@ -556,3 +556,113 @@ as a nibble:
 >>> hex(next(tr.nibble()))
 '0xfe'
 ```
+
+### `Sector` interface
+
+There is no sector interface but it is easy enough to add one. First some
+helper functions:
+
+```
+# Decode two disk bytes using 4&4 encoding to a single byte
+def four_and_four(tr):
+   odd = (next(tr.nibble()) << 1) | 1
+   evn = (next(tr.nibble()) << 0)
+   sum = odd & evn
+   return sum
+
+# Dump the sector meta-data.
+# NOTE: This assumes the track bit_index is JUST past the prologue D5 AA 96 header bytes.
+#
+# The DOS 3.3 Address Field format is:
+#
+#     D5 AA 96 vol1 vol2 trk1 trk2 sec1 sec2 chk1 chk2 DE AA EB
+#    \_______/                                         \______/
+#     prologue                                         epilogue
+#
+# Legend:
+#    vol1 -- Disk Volume, odd byte
+#    vol2 -- Disk Volume, even byte
+#    trk1 -- Track Number, odd byte
+#    trk2 -- Track Number, even byte
+#    sec1 -- Sector Number, odd byte
+#    sec2 -- Sector Number, even byte
+#    sum1 -- Checksum, odd byte
+#    sum2 -- Checkusm, even byte
+#
+def meta_sector(tr):
+    print( "--- Address Field ---" )
+    print( "Bit Position: " + hex(tr.bit_index) )
+    vol = four_and_four(tr)
+    trk = four_and_four(tr)
+    sec = four_and_four(tr)
+    sum = four_and_four(tr)
+    print( "  Vol: $" + hex(vol)[2:] )
+    print( "  Trk: $" + hex(trk)[2:] )
+    print( "  Sec: $" + hex(sec)[2:] )
+    print( "  Sum: $" + hex(sum)[2:] )
+    print( "Bit Position: " + hex(tr.bit_index) )
+    return
+
+# Find the start of the next DOS 3.3 sector
+def next_sector(tr):
+    tr.find(bytes.fromhex("D5 AA 96"))
+    return
+
+# Reset the bit position to the start of the track data
+def reset_sectors(tr):
+    tr.bit_index = 0
+    return
+
+```
+
+Then we can dump the _Address Field_ of the first few sectors via:
+
+```
+import wozardry
+with open( "DOS 3.3 System Master.woz", "rb" ) as fp:
+    woz_image = wozardry.WozDiskImage(fp)
+
+tr = woz_image.seek(0)
+reset_sectors(tr)
+
+next_sector(tr)
+meta_sector(tr)
+
+next_sector(tr)
+meta_sector(tr)
+
+next_sector(tr)
+meta_sector(tr)
+```
+
+You will see this output:
+
+```
+--- Address Field ---
+Bit Position: 0xb8
+  Vol: $fe
+  Trk: $0
+  Sec: $0
+  Sum: $fe
+Bit Position: 0xf8
+--- Address Field ---
+Bit Position: 0xcf6
+  Vol: $fe
+  Trk: $0
+  Sec: $1
+  Sum: $ff
+Bit Position: 0xd36
+--- Address Field ---
+Bit Position: 0x1934
+  Vol: $fe
+  Trk: $0
+  Sec: $2
+  Sum: $fc
+Bit Position: 0x1974
+```
+
+When you are all done quit the Python interpreter via:
+
+```
+quit()
+```

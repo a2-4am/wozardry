@@ -13,8 +13,8 @@ import itertools
 import os
 import sys
 
-__version__ = "2.0" # https://semver.org
-__date__ = "2019-03-04"
+__version__ = "2.0.1" # https://semver.org
+__date__ = "2020-10-02"
 __progname__ = "wozardry"
 __displayname__ = __progname__ + " " + __version__ + " by 4am (" + __date__ + ")"
 
@@ -578,7 +578,7 @@ class WozDiskImage:
             block_size = len(padded_bytes) // 512
             starting_block += block_size
             trk_chunk.extend(to_uint16(block_size))
-            trk_chunk.extend(to_uint32(track.bits.length()))
+            trk_chunk.extend(to_uint32(len(track.bits)))
             bits_chunk.extend(padded_bytes)
         for i in range(len(self.tracks), 160):
             trk_chunk.extend(to_uint16(0))

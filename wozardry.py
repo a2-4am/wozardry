@@ -971,6 +971,8 @@ See '""" + __progname__ + """ <command> -h' for help on individual commands.""",
     sp = parser.add_subparsers(dest="command", help="command")
     for command in cmds:
         command.setup(sp)
+    if not args:
+        parser.error("Command is required.")
     args = parser.parse_args(args)
     args.action(args)
 

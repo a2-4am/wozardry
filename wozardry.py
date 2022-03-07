@@ -709,15 +709,17 @@ class WozDiskImage:
         return self.remove(self.track_num_to_half_phase(track_num))
 
     def clean(self):
-        """removes tracks from self.tracks that are not referenced from self.tmap, and adjusts remaining self.tmap indices"""
-        if self.flux: return
+        """removes tracks from self.tracks that are not referenced from self.tmap/flux, and adjusts remaining indices"""
         i = 0
         while i < len(self.tracks):
-            if i not in self.tmap:
+            if (i not in self.tmap) and (i not in self.flux):
                 del self.tracks[i]
                 for adjust in range(len(self.tmap)):
                     if (self.tmap[adjust] >= i) and (self.tmap[adjust] != 0xFF):
                         self.tmap[adjust] -= 1
+                for adjust in range(len(self.flux)):
+                    if (self.flux[adjust] >= i) and (self.flux[adjust] != 0xFF):
+                        self.flux[adjust] -= 1
             else:
                 i += 1
 

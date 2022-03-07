@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 
-# (c) 2018-9 by 4am
-# MIT-licensed
+#(c) 2018-2022 by 4am
+#license:MIT
 
 import argparse
 import binascii
-import bitarray # https://pypi.org/project/bitarray/
 import collections
 import io
 import json
@@ -13,8 +12,8 @@ import itertools
 import os
 import sys
 
-__version__ = "2.0.1" # https://semver.org
-__date__ = "2020-10-02"
+__version__ = "2.1.0" # https://semver.org
+__date__ = "2022-03-07"
 __progname__ = "wozardry"
 __displayname__ = __progname__ + " " + __version__ + " by 4am (" + __date__ + ")"
 
@@ -25,6 +24,7 @@ kINFO = b"INFO"
 kTMAP = b"TMAP"
 kTRKS = b"TRKS"
 kWRIT = b"WRIT" # WOZ2 only
+kFLUX = b"FLUX" # WOZ3 only
 kMETA = b"META"
 kBitstreamLengthInBytes = 6646 # WOZ1 only
 kLanguages = ("English","Spanish","French","German","Chinese","Japanese","Italian","Dutch","Portuguese","Danish","Finnish","Norwegian","Swedish","Russian","Polish","Turkish","Arabic","Thai","Czech","Hungarian","Catalan","Croatian","Greek","Hebrew","Romanian","Slovak","Ukrainian","Indonesian","Malay","Vietnamese","Other")
@@ -65,6 +65,7 @@ class WozINFOFormatError_BadDiskSides(WozINFOFormatError): pass
 class WozINFOFormatError_BadBootSectorFormat(WozINFOFormatError): pass
 class WozINFOFormatError_BadOptimalBitTiming(WozINFOFormatError): pass
 class WozINFOFormatError_BadCompatibleHardware(WozINFOFormatError): pass
+class WozINFOFormatError_BadRAM(WozINFOFormatError): pass
 class WozTMAPFormatError(WozFormatError): pass
 class WozTMAPFormatError_MissingTMAPChunk(WozTMAPFormatError): pass
 class WozTMAPFormatError_BadTRKS(WozTMAPFormatError): pass
@@ -72,6 +73,9 @@ class WozTRKSFormatError(WozFormatError): pass
 class WozTRKSFormatError_BadStartingBlock(WozTRKSFormatError): pass
 class WozTRKSFormatError_BadBlockCount(WozTRKSFormatError): pass
 class WozTRKSFormatError_BadBitCount(WozTRKSFormatError): pass
+class WozFLUXFormatError(WozFormatError): pass
+class WozFLUXFormatError_MissingTMAPChunk(WozFLUXFormatError): pass
+class WozFLUXFormatError_BadTRKS(WozFLUXFormatError): pass
 class WozMETAFormatError(WozFormatError): pass
 class WozMETAFormatError_EncodingError(WozFormatError): pass
 class WozMETAFormatError_NotEnoughTabs(WozFormatError): pass
@@ -143,14 +147,22 @@ def from_intish(v, errorClass, errorString):
 def raise_if(cond, e, s=""):
     if cond: raise e(s)
 
-class Track:
+class RawTrack:
+    def __init__(self, raw_bytes, raw_count):
+        self.raw_bytes = raw_bytes
+        self.raw_count = raw_count
+
+class Track(RawTrack):
     def __init__(self, bits, bit_count):
-        self.bits = bits
+        import bitarray # https://pypi.org/project/bitarray/
+        self.bits = bitarray.bitarray(endian="big")
+        bits.frombytes(self.raw_bytes)
         while len(self.bits) > bit_count:
             self.bits.pop()
         self.bit_count = bit_count
         self.bit_index = 0
         self.revolutions = 0
+        RawTrack.__init__(self.bits.tobytes(), self.bit_count)
 
     def bit(self):
         b = self.bits[self.bit_index] and 1 or 0
@@ -197,6 +209,7 @@ class WozDiskImage:
         self.tmap = [0xFF]*160
         self.tracks = []
         self.writ = None
+        self.flux = []
         self.meta = collections.OrderedDict()
         self.woz_version = 2
         self.info["version"] = self.woz_version
@@ -248,12 +261,19 @@ class WozDiskImage:
             raise_if(not seen_tmap, WozTMAPFormatError_MissingTMAPChunk, "Expected TMAP chunk at offset 88")
             if chunk_id == kTRKS:
                 self._load_trks(data)
+            elif chunk_id == kFLUX:
+                raise_if(chunk_size != 160, WozFLUXFormatError, sBadChunkSize)
+                self._load_flux(data)
             elif chunk_id == kWRIT:
                 self._load_writ(data)
             elif chunk_id == kMETA:
                 self._load_meta(data)
         raise_if(not seen_info, WozINFOFormatError_MissingINFOChunk, "Expected INFO chunk at offset 20")
         raise_if(not seen_tmap, WozTMAPFormatError_MissingTMAPChunk, "Expected TMAP chunk at offset 88")
+        for trk, i in zip(self.tmap, itertools.count()):
+            raise_if(trk != 0xFF and trk >= len(self.tracks), WozTMAPFormatError_BadTRKS, "Invalid TMAP entry: track %d%s points to non-existent TRKS chunk %d" % (i/4, tQuarters[i%4], trk))
+        for trk, i in zip(self.flux, itertools.count()):
+            raise_if(trk != 0xFF and trk >= len(self.tracks), WozFLUXFormatError_BadTRKS, "Invalid FLUX entry: track %d%s points to non-existent TRKS chunk %d" % (i/4, tQuarters[i%4], trk))
         if crc:
             raise_if(crc != binascii.crc32(b"".join(all_data)) & 0xffffffff, WozCRCError, "Bad CRC")
 
@@ -291,8 +311,6 @@ class WozDiskImage:
             self._load_trks_v1(data)
         else:
             self._load_trks_v2(data)
-        for trk, i in zip(self.tmap, itertools.count()):
-            raise_if(trk != 0xFF and trk >= len(self.tracks), WozTMAPFormatError_BadTRKS, "Invalid TMAP entry: track %d%s points to non-existent TRKS chunk %d" % (i/4, tQuarters[i%4], trk))
 
     def _load_trks_v1(self, data):
         i = 0
@@ -305,15 +323,15 @@ class WozDiskImage:
             bytes_used = from_uint16(bytes_used_raw)
             raise_if(bytes_used > kBitstreamLengthInBytes, WozTRKSFormatError, "TRKS chunk %d bytes_used is out of range" % len(self.tracks))
             i += 2
-            bit_count_raw = data[i:i+2]
-            raise_if(len(bit_count_raw) != 2, WozEOFError, sEOF)
-            bit_count = from_uint16(bit_count_raw)
+            count_raw = data[i:i+2]
+            raise_if(len(count_raw) != 2, WozEOFError, sEOF)
+            count = from_uint16(count_raw)
             i += 2
             splice_point_raw = data[i:i+2]
             raise_if(len(splice_point_raw) != 2, WozEOFError, sEOF)
             splice_point = from_uint16(splice_point_raw)
             if splice_point != 0xFFFF:
-                raise_if(splice_point > bit_count, WozTRKSFormatError, "TRKS chunk %d splice_point is out of range" % len(self.tracks))
+                raise_if(splice_point > count, WozTRKSFormatError, "TRKS chunk %d splice_point is out of range" % len(self.tracks))
             i += 2
             splice_nibble = data[i]
             i += 1
@@ -321,9 +339,7 @@ class WozDiskImage:
             if splice_point != 0xFFFF:
                 raise_if(splice_bit_count not in (8,9,10), WozTRKSFormatError, "TRKS chunk %d splice_bit_count is out of range" % len(self.tracks))
             i += 3
-            bits = bitarray.bitarray(endian="big")
-            bits.frombytes(raw_bytes)
-            self.tracks.append(Track(bits, bit_count))
+            self.tracks.append(RawTrack(raw_bytes, count))
 
     def _load_trks_v2(self, data):
         for trk in range(160):
@@ -331,18 +347,19 @@ class WozDiskImage:
             starting_block = from_uint16(data[i:i+2])
             raise_if(starting_block in (1,2), WozTRKSFormatError_BadStartingBlock, "TRKS TRK %d starting_block out of range (expected 3+ or 0, found %s)" % (trk, starting_block))
             block_count = from_uint16(data[i+2:i+4])
-            bit_count = from_uint32(data[i+4:i+8])
+            count = from_uint32(data[i+4:i+8])
             if starting_block == 0:
                 raise_if(block_count != 0, WozTRKSFormatError_BadBlockCount, "TRKS unused TRK %d block_count must be 0 (found %s)" % (trk, block_count))
-                raise_if(bit_count != 0, WozTRKSFormatError_BadBitCount, "TRKS unused TRK %d bit_count must be 0 (found %s)" % (trk, bit_count))
+                raise_if(count != 0, WozTRKSFormatError_BadBitCount, "TRKS unused TRK %d bit_count must be 0 (found %s)" % (trk, count))
                 break
             bits_index_into_data = 1280 + (starting_block-3)*512
             raise_if(len(data) <= bits_index_into_data, WozTRKSFormatError_BadStartingBlock, sEOF)
             raw_bytes = data[bits_index_into_data : bits_index_into_data + block_count*512]
             raise_if(len(raw_bytes) != block_count*512, WozTRKSFormatError_BadBlockCount, sEOF)
-            bits = bitarray.bitarray(endian="big")
-            bits.frombytes(raw_bytes)
-            self.tracks.append(Track(bits, bit_count))
+            self.tracks.append(RawTrack(raw_bytes, count))
+
+    def _load_flux(self, data):
+        self.flux = list(data)
 
     def _load_writ(self, data):
         self.writ = data
@@ -444,7 +461,7 @@ class WozDiskImage:
     def validate_info_required_ram(self, required_ram):
         """|required_ram| can be str, bytes, or int. returns same value as int"""
         # assumes WOZ version 2 or later
-        required_ram = from_intish(required_ram, WozINFOFormatError_BadOptimalBitTiming, "Bad required RAM (expected numeric value, found %s)")
+        required_ram = from_intish(required_ram, WozINFOFormatError_BadRAM, "Bad required RAM (expected numeric value, found %s)")
         return required_ram
 
     def validate_metadata(self, metadata_as_bytes):
@@ -476,16 +493,19 @@ class WozDiskImage:
 
     def dump(self):
         """returns serialization of the disk image in bytes, suitable for writing to disk"""
-        info = self._dump_info()
-        tmap = self._dump_tmap()
-        trks = self._dump_trks()
-        writ = self._dump_writ() # will be zero-length if no WRIT chunk
-        meta = self._dump_meta() # will be zero-length if no META chunk
-        crc = binascii.crc32(info + tmap + trks + writ + meta)
+        raw_tmap = self._dump_tmap()
+        raw_trks = self._dump_trks()
+        body = self._dump_info(len(raw_tmap + raw_trks)) + \
+            raw_tmap + \
+            raw_trks + \
+            self._dump_flux() + \
+            self._dump_writ() + \
+            self._dump_meta()
+        crc = binascii.crc32(body)
         head = self._dump_head(crc)
-        return bytes(head + info + tmap + trks + writ + meta)
+        return bytes(head + body)
 
-    def _dump_info(self):
+    def _dump_info(self, tmap_trks_len):
         chunk = bytearray()
         chunk.extend(kINFO) # chunk ID
         chunk.extend(to_uint32(60)) # chunk size (constant)
@@ -500,11 +520,11 @@ class WozDiskImage:
         cleaned_raw = to_uint8(self.info["cleaned"])
         self.validate_info_cleaned(cleaned_raw)
         creator_raw = self.encode_info_creator(self.info["creator"])
-        chunk.extend(version_raw) # 1 byte, 1 or 2
-        chunk.extend(disk_type_raw) # 1 byte, 1=5.25 inch, 2=3.5 inch
-        chunk.extend(write_protected_raw) # 1 byte, 0=no, 1=yes
-        chunk.extend(synchronized_raw) # 1 byte, 0=no, 1=yes
-        chunk.extend(cleaned_raw) # 1 byte, 0=no, 1=yes
+        chunk.extend(version_raw) # 1 byte, '1', '2', or '3'
+        chunk.extend(disk_type_raw) # 1 byte, '1'=5.25 inch, '2'=3.5 inch
+        chunk.extend(write_protected_raw) # 1 byte, '0'=no, '1'=yes
+        chunk.extend(synchronized_raw) # 1 byte, '0'=no, '1'=yes
+        chunk.extend(cleaned_raw) # 1 byte, '0'=no, '1'=yes
         chunk.extend(creator_raw) # 32 bytes, UTF-8 encoded string
         if self.woz_version == 1:
             chunk.extend(b"\x00" * 23) # 23 bytes of unused space
@@ -522,18 +542,31 @@ class WozDiskImage:
             compatible_hardware_raw = to_uint16(compatible_hardware_bitfield)
             required_ram_raw = to_uint16(self.info["required_ram"])
             if self.tracks:
-                largest_bit_count = max([track.bit_count for track in self.tracks])
-                largest_block_count = (((largest_bit_count+7)//8)+511)//512
+                bit_tracks = [self.tracks[trackindex] for trackindex in self.tmap if trackindex != 0xFF]
+                largest_raw_count = max([track.raw_count for track in bit_tracks])
+                largest_block_count = (((largest_raw_count+7)//8)+511)//512
             else:
                 largest_block_count = 0
             largest_track_raw = to_uint16(largest_block_count)
+            if (self.info["version"] >= 3) and (self.flux):
+                flux_block = (tmap_trks_len+511) // 512
+                flux_tracks = [self.tracks[trackindex] for trackindex in self.flux if trackindex != 0xFF]
+                largest_flux_raw_count = max([track.raw_count for track in flux_tracks])
+                largest_flux_block_count = (largest_flux_raw_count+511)//512
+            else:
+                flux_block = 0
+                largest_flux_block_count = 0
+            flux_block_raw = to_uint16(flux_block)
+            largest_flux_track_raw = to_uint16(largest_flux_block_count)
             chunk.extend(disk_sides_raw) # 1 byte, 1 or 2
             chunk.extend(boot_sector_format_raw) # 1 byte, 0,1,2,3
             chunk.extend(optimal_bit_timing_raw) # 1 byte
             chunk.extend(compatible_hardware_raw) # 2 bytes, bitfield
             chunk.extend(required_ram_raw) # 2 bytes
             chunk.extend(largest_track_raw) # 2 bytes
-            chunk.extend(b"\x00" * 14) # 14 bytes of unused space
+            chunk.extend(flux_block_raw) # 2 bytes
+            chunk.extend(largest_flux_track_raw) # 2 bytes
+            chunk.extend(b"\x00" * 10) # 10 bytes of unused space
         return chunk
 
     def _dump_tmap(self):
@@ -541,6 +574,14 @@ class WozDiskImage:
         chunk.extend(kTMAP) # chunk ID
         chunk.extend(to_uint32(160)) # chunk size
         chunk.extend(bytes(self.tmap))
+        return chunk
+
+    def _dump_flux(self):
+        chunk = bytearray()
+        if self.flux:
+            chunk.extend(kFLUX) # chunk ID
+            chunk.extend(to_uint32(160)) # chunk size
+            chunk.extend(bytes(self.flux))
         return chunk
 
     def _dump_trks(self):
@@ -555,11 +596,10 @@ class WozDiskImage:
         chunk_size = len(self.tracks)*6656
         chunk.extend(to_uint32(chunk_size)) # chunk size
         for track in self.tracks:
-            raw_bytes = track.bits.tobytes()
-            chunk.extend(raw_bytes) # bitstream as raw bytes
-            chunk.extend(b"\x00" * (6646 - len(raw_bytes))) # padding to 6646 bytes
-            chunk.extend(to_uint16(len(raw_bytes))) # bytes used
-            chunk.extend(to_uint16(track.bit_count)) # bit count
+            chunk.extend(track.raw_bytes) # bitstream as raw bytes
+            chunk.extend(b"\x00" * (6646 - len(track.raw_bytes))) # padding to 6646 bytes
+            chunk.extend(to_uint16(len(track.raw_bytes))) # bytes used
+            chunk.extend(to_uint16(track.raw_count)) # bit count
             chunk.extend(b"\xFF\xFF") # splice point (none)
             chunk.extend(b"\xFF") # splice nibble (none)
             chunk.extend(b"\xFF") # splice bit count (none)
@@ -572,13 +612,14 @@ class WozDiskImage:
         bits_chunk = bytearray()
         for track in self.tracks:
             # get bitstream as bytes and pad to multiple of 512
-            padded_bytes = track.bits.tobytes()
-            padded_bytes += (512 - (len(padded_bytes) % 512))*b"\x00"
+            padded_bytes = track.raw_bytes
+            if (len(padded_bytes) % 512):
+                padded_bytes += (512 - (len(padded_bytes) % 512))*b"\x00"
             trk_chunk.extend(to_uint16(starting_block))
             block_size = len(padded_bytes) // 512
             starting_block += block_size
             trk_chunk.extend(to_uint16(block_size))
-            trk_chunk.extend(to_uint32(len(track.bits)))
+            trk_chunk.extend(to_uint32(track.raw_count))
             bits_chunk.extend(padded_bytes)
         for i in range(len(self.tracks), 160):
             trk_chunk.extend(to_uint16(0))
@@ -669,6 +710,7 @@ class WozDiskImage:
 
     def clean(self):
         """removes tracks from self.tracks that are not referenced from self.tmap, and adjusts remaining self.tmap indices"""
+        if self.flux: return
         i = 0
         while i < len(self.tracks):
             if i not in self.tmap:
@@ -776,9 +818,14 @@ class _CommandDump(_BaseCommand):
 
     def print_tmap_525(self):
         i = 0
-        for trk, i in zip(self.woz_image.tmap, itertools.count()):
-            if trk != 0xFF:
-                print(("TMAP:  Track %d%s" % (i/4, tQuarters[i%4])).ljust(self.kWidth), "TRKS %d" % (trk))
+        the_flux = self.woz_image.flux
+        if not the_flux:
+            the_flux = [0xFF] * len(self.woz_image.tmap)
+        for tmap_trk, flux_trk, i in zip(self.woz_image.tmap, the_flux, itertools.count()):
+            if tmap_trk != 0xFF:
+                print(("TMAP:  Track %d%s" % (i/4, tQuarters[i%4])).ljust(self.kWidth), "TRKS %d" % (tmap_trk))
+            elif flux_trk != 0xFF:
+                print(("FLUX:  Track %d%s" % (i/4, tQuarters[i%4])).ljust(self.kWidth), "TRKS %d" % (flux_trk))
 
     def print_tmap_35(self):
         track_num = 0
@@ -868,7 +915,7 @@ requires_machine, notes, side, side_name, contributor, image_date. Other keys ar
             k, v = i.split(":", 1)
             if k == "version":
                 v = from_intish(v, WozINFOFormatError_BadVersion, "Unknown version (expected numeric value, found %s)")
-                raise_if(v not in (1,2), WozINFOFormatError_BadVersion, "Unknown version (expected 1 or 2, found %s) % v")
+                raise_if(v not in (1,2,3), WozINFOFormatError_BadVersion, "Unknown version (expected 1, 2, or 3, found %s) % v")
                 self.woz_image.woz_version = v
                 self.woz_image.info["version"] = v
 

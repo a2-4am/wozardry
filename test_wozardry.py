@@ -379,7 +379,7 @@ def test_command_edit_info_version_1_to_2():
         wozardry.parse_args(["edit", "-i", "version:2", tmp.name])
         with open(tmp.name, "rb") as tmpstream:
             woz = wozardry.WozDiskImage(tmpstream)
-        assert woz.woz_version == 2
+        assert woz.image_type == wozardry.kWOZ2
         assert woz.info["version"] == 2
         assert woz.info["boot_sector_format"] == 0
         assert woz.info["optimal_bit_timing"] == 32

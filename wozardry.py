@@ -230,8 +230,8 @@ class Track:
             n += b << bit_index
         yield n
 
-    def rewind(self, bit_count):
-        self.bit_index -= 1
+    def rewind(self, bit_count=1):
+        self.bit_index -= bit_count
         if self.bit_index < 0:
             self.bit_index = self.bit_count - 1
             self.revolutions -= 1
@@ -789,11 +789,27 @@ class WozDiskImage:
                 i += 1
 
     def seek(self, track_num):
-        """returns Track object for the given track, or None if the track is not part of this disk image. track_num can be 0..40 in 0.25 increments (0, 0.25, 0.5, 0.75, 1, &c.)"""
+        """returns Track object for the given track, or None if the
+        track is not part of this disk image. track_num can be 0..40
+        in 0.25 increments (0, 0.25, 0.5, 0.75, 1, &c.)"""
+
         half_phase = self.track_num_to_half_phase(track_num)
         trk_id = self.tmap[half_phase]
-        if trk_id == 0xFF: return None
-        return self.tracks[trk_id]
+        if trk_id != 0xFF:
+            return self.tracks[trk_id]
+        elif (self.info["version"] >= 3) and (self.flux):
+            # Empty track or flux track
+            trk_id = self.flux[half_phase]
+            if trk_id != 0xFF:
+                # Flux track
+                return self.tracks[trk_id]
+            else:
+                # Empty flux track AND empty track
+                # This should not happen
+                return None
+        else:
+            # Empty track
+            return None
 
     def from_json(self, json_string):
         j = json.loads(json_string)

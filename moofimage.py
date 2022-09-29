@@ -206,9 +206,31 @@ class MoofRWTS:
     def verify_data_epilogue_at_point(self, track):
         return self.verify_nibbles_at_point(track, self.data_epilogue)
 
+def get_pace_key_at_point(rwts, track, bit_index):
+    track.bit_index, bit_index = bit_index, track.bit_index
+    key = []
+    prologue = (0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xAB, 0xCD, 0xEF, 0xEF)
+    if rwts.verify_nibbles_at_point(track, prologue):
+        for i in range(4):
+            next(track.nibble())
+        for i in range(4):
+            x = (next(track.nibble()) << 8) + next(track.nibble())
+            x = x & 0x5555
+            x = (x | (x >> 1)) & 0x3333
+            x = (x | (x >> 2)) & 0x0f0f
+            x = (x | (x >> 4)) & 0x00ff
+            x = (x | (x >> 8)) & 0xffff
+            key.append(x)
+        key.reverse()
+    track.bit_index, bit_index = bit_index, track.bit_index
+    return "".join(map(myhex, key))
+
 def driver(filename):
     with open(filename, 'rb') as f:
         mdisk = MoofDiskImage(f)
+    if not mdisk.info["disk_type"] in (1,2):
+        print("/!\ MFM disks not supported yet")
+        return
     rwts = MoofRWTS()
     for track_index in mdisk.tmap:
         if track_index == 0xFF: continue
@@ -231,27 +253,11 @@ def driver(filename):
                 continue
             if address_field.sector_id in seen_sectors: break
             seen_sectors.append(address_field.sector_id)
-            bit_index = track.bit_index
+            old_bit_index = track.bit_index
             if not rwts.find_data_prologue(track):
-                track.bit_index = bit_index
-                if rwts.verify_nibbles_at_point(track, (0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xAB, 0xCD, 0xEF, 0xEF)):
-                    print(f'/!\ track {myhex(address_field.track_id)}, sector {myhex(address_field.sector_id)}: found PACE decryption key ', end='')
-                    # extract PACE decryption key
-                    for i in range(4):
-                        next(track.nibble())
-                    key = []
-                    for i in range(4):
-                        x = (next(track.nibble()) << 8) + next(track.nibble())
-                        x = x & 0x5555
-                        x = (x | (x >> 1)) & 0x3333
-                        x = (x | (x >> 2)) & 0x0f0f
-                        x = (x | (x >> 4)) & 0x00ff
-                        x = (x | (x >> 8)) & 0xffff
-                        key.append(x)
-                    key.reverse()
-                    for x in key:
-                        print(myhex(x), end='')
-                    print()
+                key = get_pace_key_at_point(rwts, track, old_bit_index)
+                if key:
+                    print(f'/!\ track {myhex(address_field.track_id)}, sector {myhex(address_field.sector_id)}: found PACE decryption key {key}')
                 continue
             try:
                 valid, sector_id, tags, decoded_bytes = rwts.data_field_at_point(track)

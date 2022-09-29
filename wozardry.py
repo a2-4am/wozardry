@@ -3,39 +3,6 @@
 #(c) 2018-2022 by 4am
 #license:MIT
 
-"""
-// INFO chunk begins at byte 12
-        data.append(Data("INFO".utf8))              // 12: beginning of INFO chunk
-        data.write32UL(60)                          // 16: INFO chunk size
-        data.write8U(0x01)                          // 20: INFO chunk version
-        // 21: disk type ( 0 = ?, 1 = 3.5 SSDD, 2 = 3.5 DSDD, 3 = 3.5 DSHD)
-        let isHD = disk.diskInfo.contains(.highDensity)
-        if disk.diskInfo.contains(.doubleSided) {
-            data.write8U(isHD ? 3 : 2)
-        } else {
-            data.write8U(1)
-        }
-        data.write8U(disk.writeProtected ? 0x01 : 0x00) // 22: write protected
-        data.write8U(disk.synchronized ? 0x01 : 0x00)   // 23: tracks synchronized
-        data.write8U(isHD ? 8 : 16)                       // 24: optimal bit timing
-        // 25: creator
-        if let bundle_info = Bundle.main.infoDictionary {
-            let vers = bundle_info["CFBundleShortVersionString"] as? String ?? "x.x"
-            let creator: String
-            if disk.fastImaged {
-                creator = String(format: "Applesauce v%@ Fast Imager          ", vers)
-            } else {
-                creator = String(format: "Applesauce v%@                      ", vers)
-            }
-            data.append(Data(creator.utf8.prefix(32)))
-        }
-        data.write8U(0x00)                           // 57: pad (always zero)
-        data.write16UL(0x0000)                      // 58: largest track (will be updated to correct value later)
-        data.write16UL(0x0000)                        // 60: starting block of FLUX chunk
-        data.write16UL(0x0000)                      // 62: largest flux track (will be updated to correct value later)
-        // ... pad bytes out to 90 (68) ...
-        data.writeData(Data(repeating: 0x00, count: 68 - data.count))
-"""
 import argparse
 import binascii
 import collections
@@ -189,61 +156,9 @@ def raise_if(cond, e, s=""):
     if cond: raise e(s)
 
 class Track:
-    def __init__(self, data, count, is_legacy=True):
-        if is_legacy:
-            # parameters are bits and bit count
-            self.oldinit(data, count)
-        else:
-            # parameters are bytes and byte count
-            self.newinit(data, count)
-
-    def newinit(self, raw_bytes, raw_count):
+    def __init__(self, raw_bytes, raw_count):
         self.raw_bytes = raw_bytes
         self.raw_count = raw_count
-
-    def oldinit(self, bits, bit_count):
-        import bitarray # https://pypi.org/project/bitarray/
-        self.bits = bitarray.bitarray(endian="big")
-        bits.frombytes(self.raw_bytes)
-        while len(self.bits) > bit_count:
-            self.bits.pop()
-        self.bit_count = bit_count
-        self.bit_index = 0
-        self.revolutions = 0
-        self.newinit(self.bits.tobytes(), (self.bit_count + 7) // 8)
-
-    def bit(self):
-        b = self.bits[self.bit_index] and 1 or 0
-        self.bit_index += 1
-        if self.bit_index >= self.bit_count:
-            self.bit_index = 0
-            self.revolutions += 1
-        yield b
-
-    def nibble(self):
-        b = 0
-        while b == 0:
-            b = next(self.bit())
-        n = 0x80
-        for bit_index in range(6, -1, -1):
-            b = next(self.bit())
-            n += b << bit_index
-        yield n
-
-    def rewind(self, bit_count=1):
-        self.bit_index -= bit_count
-        if self.bit_index < 0:
-            self.bit_index = self.bit_count - 1
-            self.revolutions -= 1
-
-    def find(self, sequence):
-        starting_revolutions = self.revolutions
-        seen = [0] * len(sequence)
-        while (self.revolutions < starting_revolutions + 2):
-            del seen[0]
-            seen.append(next(self.nibble()))
-            if tuple(seen) == tuple(sequence): return True
-        return False
 
 class WozDiskImage:
     def __init__(self, iostream=None):
@@ -390,7 +305,7 @@ class WozDiskImage:
             if splice_point != 0xFFFF:
                 raise_if(splice_bit_count not in (8,9,10), WozTRKSFormatError, "TRKS chunk %d splice_bit_count is out of range" % len(self.tracks))
             i += 3
-            self.tracks.append(Track(raw_bytes, count, False))
+            self.tracks.append(Track(raw_bytes, count))
 
     def _load_trks_v2(self, data):
         for trk in range(160):
@@ -407,7 +322,7 @@ class WozDiskImage:
             raise_if(len(data) <= bits_index_into_data, WozTRKSFormatError_BadStartingBlock, sEOF)
             raw_bytes = data[bits_index_into_data : bits_index_into_data + block_count*512]
             raise_if(len(raw_bytes) != block_count*512, WozTRKSFormatError_BadBlockCount, sEOF)
-            self.tracks.append(Track(raw_bytes, count, False))
+            self.tracks.append(Track(raw_bytes, count))
 
     def _load_flux(self, data):
         self.flux = list(data)

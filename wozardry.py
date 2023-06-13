@@ -5,6 +5,7 @@
 
 import argparse
 import binascii
+import bitarray # https://pypi.org/project/bitarray/
 import collections
 import io
 import json
@@ -159,6 +160,63 @@ class Track:
     def __init__(self, raw_bytes, raw_count):
         self.raw_bytes = raw_bytes
         self.raw_count = raw_count
+
+        self.bits = bitarray.bitarray(endian="big")
+        self.bits.frombytes(self.raw_bytes)
+        while len(self.bits) > raw_count:
+            self.bits.pop()
+        self.bit_index = 0
+        self.revolutions = 0
+
+    def rewind(self, bit_count=1):
+        self.bit_index -= bit_count
+        while self.bit_index < 0:
+            self.bit_index += self.raw_count
+            self.revolutions -= 1
+
+    def forward(self, bit_count=1):
+        self.bit_index += bit_count
+        while self.bit_index >= self.raw_count:
+            self.bit_index -= self.raw_count
+            self.revolutions += 1
+
+    def bit(self):
+        b = self.bits[self.bit_index]
+        self.forward()
+        yield b
+
+    def nibble(self):
+        while not next(self.bit()): pass
+        n = 0b10000000
+        for bit_index in range(6, -1, -1):
+            b = next(self.bit())
+            n |= b << bit_index
+        yield n
+
+    def find(self, sequence):
+        starting_revolutions = self.revolutions
+        seen = [0] * len(sequence)
+        while (self.revolutions < starting_revolutions + 2):
+            del seen[0]
+            seen.append(next(self.nibble()))
+            if tuple(seen) == tuple(sequence): return True
+        return False
+
+    def find_this_not_that(self, good, bad):
+        starting_revolutions = self.revolutions
+        good = tuple(good)
+        bad = tuple(bad)
+        seen_good = [0] * len(good)
+        seen_bad = [0] * len(bad)
+        while (self.revolutions < starting_revolutions + 2):
+            del seen_good[0]
+            del seen_bad[0]
+            n = next(self.nibble())
+            seen_good.append(n)
+            seen_bad.append(n)
+            if tuple(seen_bad) == bad: return False
+            if tuple(seen_good) == good: return True
+        return False
 
 class WozDiskImage:
     def __init__(self, iostream=None):
